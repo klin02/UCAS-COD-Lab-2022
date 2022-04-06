@@ -29,8 +29,9 @@ module simple_cpu(
 	
 //Signals related to PC
 	wire [31:0] PC4;
-	wire [31:0] PC8;
-
+	//wire [31:0] PC8;
+	//Using ALU_Result instead
+	
 //Signals related to extension
 	wire [31:0] zero_extension;	//use in ALU
 	wire [31:0] sign_extension;	//use in ALU
@@ -57,8 +58,8 @@ module simple_cpu(
 	wire [ 4:0] RF_raddr2;
 	wire [31:0] RF_rdata1;
 	wire [31:0] RF_rdata2;
-	wire	    RF_wen;	 //USED IN TESTBENCE , DO NOT MODIFIED
-	wire [ 4:0] RF_waddr; 	 //USED IN TESTBENCE , DO NOT MODIFIED
+	wire	    RF_wen;	//USED IN TESTBENCE , DO NOT MODIFIED
+	wire [ 4:0] RF_waddr; 	//USED IN TESTBENCE , DO NOT MODIFIED
 	wire [31:0] RF_wdata;   //USED IN TESTBENCE , DO NOT MODIFIED
 
 //Signals connected to PC refresh
@@ -69,12 +70,12 @@ module simple_cpu(
 
 //Signals connected to load and store
 	wire [31:0] load_data;
-	wire [31:0] lb_data;  //sign_extend
+	wire [31:0] lb_data;	//sign_extend
 	wire [31:0] lh_data;
 	wire [31:0] lw_data;
-	wire [31:0] lbu_data; //zero_extend
+	wire [31:0] lbu_data;	//zero_extend
 	wire [31:0] lhu_data;
-	wire [31:0] lwl_data; //left mem, right rt, content depens on vaddr
+	wire [31:0] lwl_data;	//left mem, right rt, content depens on vaddr
 	wire [31:0] lwr_data;
 	
 	wire [ 3:0] sb_strb;
@@ -86,11 +87,12 @@ module simple_cpu(
 	wire [31:0] sb_data;	//take the least significant 8 bit
 	wire [31:0] sh_data;
 	wire [31:0] sw_data;
-	wire [31:0] swl_data;	//not care undefined place, so can use shift in reverse dir
-	wire [31:0] swr_data;
 	wire [ 4:0] swl_shifter;
 	wire [ 4:0] swr_shifter;
-	
+	//wire [31:0] swl_data;	//not care undefined place, so can use shift in reverse dir
+	//wire [31:0] swr_data;
+	//Using Shifter_Result instead
+
 //Analyse Instruction code
 	assign opcode	= Instruction[31:26];
 	assign rs	= Instruction[25:21];
@@ -103,7 +105,7 @@ module simple_cpu(
 	
 //PC4 and PC8 prepared for PC refresh
 	assign PC4 = PC +4;
-	assign PC8 = PC +8;
+	//assign PC8 = PC +8;
 	
 //extension prepared for operation
 	assign zero_extension	= { 16'b0 , imm };
@@ -113,44 +115,48 @@ module simple_cpu(
 	
 //signals connected to ALU
 	//All type below can differ from others
-	//Operation related to ALU list as : Type (op_A op_B) num:   feature
+	//Operation related to ALU list as : Type (op_A op_B) num :   feature
 		//R calc (rs rt)  8 : 		   	opcode[5:0]=000000 & func[5]=1
-		//I calc (rs imm) 6 : 			opcode[5:3]=001 & (~&opcode[2:0])	(diff from lui)
-		//REGIMM (rs 0)   2 :			opcode[5:0]=000001	(BGEZ BLTZ)   GPR[rs]?0   using SLT(sign)
+		//I calc (rs imm) 6 : 			opcode[5:3]=001 & (~&opcode[2:0]) diff from lui
+		//REGIMM (rs 0)   2 :			opcode[5:0]=000001 BGEZ BLTZ   GPR[rs]?0   using SLT(sign)
 		//Branch (rs rt)  2 :			opcode[5:1]=00010  
-			//(rs 0)  2 :  		opcode[5:1]=00011	using SUB and test ZERO or signflag
-		//load and store (rs imm) 12 :	opcode[5]=1 using ADD
+ 		       //(rs 0)   2 : 	 		opcode[5:1]=00011  using SUB and test ZERO or signflag
+		//load and store (rs imm) 12 :		opcode[5]=1 using ADD
 			//base(rs)+offset(imm)
-		
+		//JAL (PC_reg 8) 1:			opcode[5:0]=000011
+		//JALR (PC_reg 8) 1:			opcode[5:0]=000000 & func[5:1]=001001
+
 	//Operation not related to ALU list: 
-		//shifter 6 : 				opcode[5:0] = 000000 & func[5:3]=000
-		//jump    4 : J JAL 			opcode[5:1] =00001 
-			   //JR JALR 			opcode[5:0] = 000000 & func[5:1]=00100
-		//lui	  1 :  			opcode[5:0] = 001111
-		//move (rt 0) 2 :			opcode[5:0]=000000 & func[5:1]=00101
+		//shifter 6 : 				opcode[5:0]=000000 & func[5:3]=000
+		//jump    2 : J  			opcode[5:0]=000010
+			    //JR			opcode[5:0]=000000 & func[5:0]=001000 
+		//lui	  1 :				opcode[5:0]=001111
+		//move	 (rt 0)  2 :			opcode[5:0]=000000 & func[5:1]=00101
 			//move rs to rd, 
 			//we can use ALU(ADD/SUB) or no, and we should care the condition about Reg_wen
 
-	assign ALU_op = (opcode[5:0]==6'b000000) & (func[5]==1'b1)? (func[3:2]==2'b00 ? {func[1],2'b10}		:
-								     func[3:2]==2'b01 ? {func[1],1'b0,func[0]}	:
-								     func[3:2]==2'b10 ? {~func[0],2'b11} 		:
-					   			     0 ) 	:
-			(opcode[5:3]==3'b001) & (~&opcode[2:0])  ? (opcode[2:1]==2'b00 ? {opcode[1],2'b10} 		:
-								     opcode[2]==1'b1 ? {opcode[1],1'b0,opcode[0]}	:
-								     opcode[2:1]==2'b01 ? {~opcode[0],2'b11}		:
-								     0 ) 	:
-			opcode[5:0]==6'b000001		  	  ? 3'b111 	:
-			opcode[5:2]==4'b0001 			  ? 3'b110 	:
-			opcode[5]  ==1'b1			  ? 3'b010 	:
+	assign ALU_op = (~|opcode[5:0]) & func[5]==1'b1 	? (func[3:2]==2'b00 ? {func[1],2'b10}		:
+						 		  func[3:2]==2'b01 ? {func[1],1'b0,func[0]} 	:
+								  func[3:2]==2'b10 ? {~func[0],2'b11} 		:
+								  0 ) 	 :
+			opcode[5:3]==3'b001 & (~&opcode[2:0])	? (opcode[2:1]==2'b00 ? {opcode[1],2'b10} 	:
+								  opcode[2]==1'b1 ? {opcode[1],1'b0,opcode[0]} 	:
+								  opcode[2:1]==2'b01 ? {~opcode[0],2'b11} 	:
+								  0 ) 	 :
+			opcode[5:0]==6'b000001			? 3'b111 :
+			opcode[5:2]==4'b0001 			? 3'b110 :
+			opcode[5]  ==1'b1			? 3'b010 :
+			opcode[5:0]==6'b000011 | ((~|opcode[5:0]) & func[5:0]== 6'b001001)	? 3'b010 :
 			0; //default
 	assign ALU_A = RF_rdata1;
-	//ALU_B: rt / 0 / sign_extend(imm) /zero_extend(imm)
+	//ALU_B: 4 / 8/ rt / 0 / sign_extend(imm) /zero_extend(imm)
 	//imm_extension: I_calc 6 + load and store 12
 		//zero_extension : ANDI ORI XORI 	opcode[2]=1
 		//sign_extension : ADDIU SLTI SLTIU	opcode[2]=0    load and store: opcode[5]==1
-	assign ALU_B = (opcode[5:3]==3'b001) & (~&opcode[2:0]) ? ( opcode[2] ? zero_extension : sign_extension )	:
-			opcode[5]				 ? sign_extension 					:
-			opcode[5:0]==6'b000001			 ? 32'b0 						:
+	assign ALU_B =  opcode[5:3]==3'b001 & (~&opcode[2:0]) 	? ( opcode[2] ? zero_extension : sign_extension )	:
+			opcode[5]				? sign_extension 					:
+			opcode[5:0]==6'b000001 			? 32'b0							:
+			opcode[5:0]==6'b000011 | ((~|opcode[5:0]) & func[5:0]== 6'b001001)	? 32'd8			:
 			RF_rdata2;
 	
 	alu alu_inst(
@@ -164,13 +170,20 @@ module simple_cpu(
 	);
 	
 //signals connected to Shifter
-	//Operation related to Shifter list: 6
-	//change B width to 5
-		//xxx  (rt sa) 3: fun[2]=0
-		//xxxv (rt rs) 3: fun[2]=1
-	assign Shifter_op = (~|opcode[5:0])&(~|func[5:3]) ? func[1:0] : 0;
+	//Operation related to Shifter list: 6 + 2(swl swr)
+	//B width is 5
+	//R shift: opcode[5:0]=000000 & funct[5:3]=000
+		//xxx  (rt sa) 3:		fun[2]=0
+		//xxxv (rt rs) 3:		fun[2]=1
+	//Swl/swr: opcode[5:0]=101x10
+		//swl/swr (rt swl_shifter)		
+	assign Shifter_op = (~|opcode[5:0])&(~|func[5:3])		? func[1:0]		: 
+			    {opcode[5:3],opcode[1:0]} == 5'b10110	? {~opcode[2],1'b0}	:
+			    0;
 	assign Shifter_A = RF_rdata2;
-	assign Shifter_B = func[2] ? RF_rdata1[4:0] : sa;
+	assign Shifter_B = (~|opcode[5:0])&(~|func[5:3])		? (func[2] ? RF_rdata1[4:0] : sa)	  :
+			   {opcode[5:3],opcode[1:0]} == 5'b10110	? (opcode[2] ? swr_shifter : swl_shifter) :
+			   0;
 	
 	shifter shifter_inst(
 	   .A(Shifter_A),
@@ -183,41 +196,40 @@ module simple_cpu(
 //signals connected to Reg_file
 	assign RF_raddr1 = rs;
 	assign RF_raddr2 = rt;
-	//Operations related to RF_wen 32 :
+	//Operations related to RF_wen 32 
 		//Type		Num 	addr 		data		feature
-		//R calc 	8	rd 		alu_re 	opcode[5:0]=000000 & func[5]=1
-		//I calc 	6 	rt 		alu_re 	opcode[5:3]=001 & (~&opcode[2:0])
-		//load 	7 	rt 		loaddata 	opcode[5:3]=100
+		//R calc 	8	rd 		alu_re		opcode[5:0]=000000 & func[5]=1
+		//I calc 	6 	rt 		alu_re		opcode[5:3]=001 & (~&opcode[2:0])
+		//load		7 	rt 		loaddata 	opcode[5:3]=100
 		//shift 	6 	rd 		shift_re 	opcode[5:0]=000000 & func[5:3]=000
-		//JAL 		1 	31 		PC8 		opcode[5:0]=000011
-		//JALR 	1 	rd 		PC8 		opcode[5:0]=000000 & func[5:0]=001001
-		//LUI 		1 	rt 		imm||0^16	opcode[5:0]=001111
-		//MOV 		2 	rd 		rdata1 	opcode[5:0]=000000 & func[5:1]=00101
+		//JAL 		1 	31 		PC8(alu_re) 	opcode[5:0]=000011
+		//JALR		1 	rd 		PC8(alu_re) 	opcode[5:0]=000000 & func[5:0]=001001
+		//LUI 		1 	rt 		imm||0^16   	opcode[5:0]=001111
+		//MOV 		2 	rd 		rdata1		opcode[5:0]=000000 & func[5:1]=00101
 			//mov is only use condition to refresh GPR, br or jump refresh PC, so we should consider whether is 0
-	//Operation not related to RF_wen 13 : 
+	//Operation not related to RF_wen 13 
 		//Type 	Num 	feature
 		//REGIMM 	2	opcode[5:0]=000001
 		//Branch 	4 	opcode[5:2]=0001
 		//store 	5 	opcode[5:3]=101
 		//J 		1	opcode[5:0]=000010
 		//JR 		1 	opcode[5:0]=000000 & func[5:0]=001000
-	assign RF_wen = ((opcode[5:0]==6'b000000) & (func[5]==1'b1)) 	| 
-			((opcode[5:3]==3'b001) & (~&opcode[2:0]))  	 	|
-			(opcode[5:3]==3'b100)					|
-			((opcode[5:0]==6'b000000) & (func[5:3]==3'b000))	|
+	assign RF_wen = (opcode[5:0]==6'b000000 & func[5]==1'b1) 	 	| 
+			(opcode[5:3]==3'b001 & (~&opcode[2:0]))  	 	|
+			(opcode[5:3]==3'b100)				 	|
+			(opcode[5:0]==6'b000000 & func[5:3]==3'b000)		|
 			(opcode[5:0]==6'b000011)				|
-			((opcode[5:0]==6'b000000) & (func[5:0]==6'b001001))	|
+			(opcode[5:0]==6'b000000 & func[5:0]==6'b001001)		|
 			(opcode[5:0]==6'b001111)				|
-			(((opcode[5:0]==6'b000000) & (func[5:1]==5'b00101)) & ((func[0] & (|RF_rdata2))|(~func[0] & (~|RF_rdata2)))) ;	
-	assign RF_waddr =	((opcode[5:3]==3'b100) | (opcode[5:3]==3'b001) ) 	? rt 	:
-				((opcode[5:0]==6'b000011)) 				? 5'd31 :
-				rd ;
-	assign RF_wdata = 	(((opcode[5:0]==6'b000000) & (func[5:1]==5'b00101)) & ((func[0] & (|RF_rdata2))|(~func[0] & (~|RF_rdata2))))? RF_rdata1		:
-				(opcode[5:3]==3'b100) 												? load_data		: //define below
-				((opcode[5:0]==6'b000000) & (func[5:3]==3'b000)) 							  	? Shifter_Result	:
-				(opcode[5:0]==6'b000011) | ((opcode[5:0]==6'b000000) & (func[5:0]==6'b001001))				? PC8 			:
-				(opcode[5:0]==6'b001111)											? {imm,16'b0} 		:
-				ALU_Result ;
+			((opcode[5:0]==6'b000000 & func[5:1]==5'b00101) & ((func[0] & (|RF_rdata2))|(~func[0] & (~|RF_rdata2)))) ;	
+	assign RF_waddr = (opcode[5:3]==3'b100 | opcode[5:3]==3'b001 ) 	? rt 	:
+			  (opcode[5:0]==6'b000011) 		  	? 5'd31 :
+			  rd ;
+	assign RF_wdata = ((opcode[5:0]==6'b000000 & func[5:1]==5'b00101) & ((func[0] & (|RF_rdata2))|(~func[0] & (~|RF_rdata2))))	? RF_rdata1		:
+			   (opcode[5:3]==3'b100)											? load_data		: //define below
+			   (opcode[5:0]==6'b000000 & func[5:3]==3'b000) 							  	? Shifter_Result 	:
+			   (opcode[5:0]==6'b001111)											? {imm,16'b0} 		:
+			   ALU_Result ;
 						
 	reg_file reg_file_inst(
 		.clk(clk),
@@ -286,8 +298,8 @@ module simple_cpu(
 	assign lwl_data = ({ 32{~ALU_Result[1] & ~ALU_Result[0]} } & { Read_data[ 7: 0] , RF_rdata2[23: 0] } )	|
 			  ({ 32{~ALU_Result[1] &  ALU_Result[0]} } & { Read_data[15: 0] , RF_rdata2[15: 0] } )	|
 			  ({ 32{ ALU_Result[1] & ~ALU_Result[0]} } & { Read_data[23: 0] , RF_rdata2[ 7: 0] } )	|
-			  ({ 32{ ALU_Result[1] &  ALU_Result[0]} } &   Read_data[31: 0] )				;
-	assign lwr_data = ({ 32{~ALU_Result[1] & ~ALU_Result[0]} } &   Read_data[31: 0] )				|
+			  ({ 32{ ALU_Result[1] &  ALU_Result[0]} } &   Read_data[31: 0] )			;
+	assign lwr_data = ({ 32{~ALU_Result[1] & ~ALU_Result[0]} } &   Read_data[31: 0] )			|
 		  	  ({ 32{~ALU_Result[1] &  ALU_Result[0]} } & { RF_rdata2[31:24] , Read_data[31: 8] } )	|
 			  ({ 32{ ALU_Result[1] & ~ALU_Result[0]} } & { RF_rdata2[31:16] , Read_data[31:16] } )	|
 			  ({ 32{ ALU_Result[1] &  ALU_Result[0]} } & { RF_rdata2[31: 8] , Read_data[31:24] } )	;
@@ -302,10 +314,10 @@ module simple_cpu(
 	//store data 	rt->mem 
 		//strb is signal showing which bytewrite is valid, code by truthtable //byte means vaddr/ALU_result[2:0]
 		// vaddr 	swl_strb 	swl_shifter	swr_Strb 	swr_shifter
-		// 00/0	0001		11000/24	1111		00000/0			
+		// 00/0		0001		11000/24	1111		00000/0			
 		// 01/1 	0011		10000/16	1110		01000/8
-		// 10/2 	0111		01000/8	1100		10000/16
-		// 11/3 	1111		00000/0	1000		11000/24
+		// 10/2 	0111		01000/8		1100		10000/16
+		// 11/3 	1111		00000/0		1000		11000/24
 	
 	assign sb_strb  = { ALU_Result[1]& ALU_Result[0] , ALU_Result[1]& ~ALU_Result[0] , ~ALU_Result[1]& ALU_Result[0] , ~ALU_Result[1]& ~ALU_Result[0]};
 	assign sh_strb  = { {2{ALU_Result[1]}} , {2{~ALU_Result[1]}} } ;
@@ -323,13 +335,13 @@ module simple_cpu(
 	assign sw_data	   = RF_rdata2 ; 
 	assign swl_shifter = {~ALU_Result[1:0] , 3'b0};
 	assign swr_shifter = { ALU_Result[1:0] , 3'b0};
-	assign swl_data    = RF_rdata2 >> swl_shifter ;
-	assign swr_data    = RF_rdata2 << swr_shifter ; 
-	assign Write_data  = ( {32{opcode[2:0]==3'b000}} & sb_data )	|
-			     ( {32{opcode[2:0]==3'b001}} & sh_data )	|
-	 		     ( {32{opcode[2:0]==3'b011}} & sw_data )	|
-			     ( {32{opcode[2:0]==3'b010}} & swl_data )	|
-			     ( {32{opcode[2:0]==3'b110}} & swr_data )	;
+	// Reuse shifter module to save two shifter
+	// swl_data = RF_rdata2 >> swl_shifter ;
+	// swr_data = RF_rdata2 << swr_shifter ; 
+	assign Write_data = 	( {32{opcode[2:0]==3'b000}} & sb_data )		|
+				( {32{opcode[2:0]==3'b001}} & sh_data )		|
+				( {32{opcode[2:0]==3'b011}} & sw_data )		|
+				( {32{opcode[1:0]==2'b10}}  & Shifter_Result )	;
 endmodule
 
 
