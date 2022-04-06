@@ -148,7 +148,8 @@ module simple_cpu(
 			opcode[5]  ==1'b1			? 3'b010 :
 			opcode[5:0]==6'b000011 | ((~|opcode[5:0]) & func[5:0]== 6'b001001)	? 3'b010 :
 			0; //default
-	assign ALU_A = RF_rdata1;
+	assign ALU_A =  opcode[5:0]==6'b000011 | ((~|opcode[5:0]) & func[5:0]==6'b001001) ? PC_Reg : 
+			RF_rdata1;
 	//ALU_B: 4 / 8/ rt / 0 / sign_extend(imm) /zero_extend(imm)
 	//imm_extension: I_calc 6 + load and store 12
 		//zero_extension : ANDI ORI XORI 	opcode[2]=1
