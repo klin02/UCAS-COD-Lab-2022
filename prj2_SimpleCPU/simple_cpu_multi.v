@@ -206,7 +206,7 @@ module simple_cpu(
 	assign rd	= Instruction_Reg[15:11];
 	assign sa	= Instruction_Reg[10:6];
 	assign func	= Instruction_Reg[5:0];
-	assign imm	= Instruction_Reg[15:0]; //与offset通用
+	assign imm	= Instruction_Reg[15:0]; //or offset
 	assign index	= Instruction_Reg[25:0]; 
 	
 //PC4 and PC8 prepared for PC refresh
