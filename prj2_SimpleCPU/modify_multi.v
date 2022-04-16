@@ -54,19 +54,31 @@ module simple_cpu(
 	wire [31:0] j_extension; 	//use in PC refresh
 	
 //Signals connected to ALU
-	wire [31:0] ALU_A;
-	wire [31:0] ALU_B;
-	wire [ 2:0] ALU_op;
+        wire [31:0] ALU_A_origin;
+        wire [31:0] ALU_B_origin;
+        reg  [31:0] ALU_A_reg;  //not include PC
+        reg  [31:0] ALU_B_reg;
+	wire [31:0] ALU_A_final;
+	wire [31:0] ALU_B_final;
+        wire [ 2:0] ALU_op_origin;
+        reg  [ 2:0] ALU_op_reg;
+	wire [ 2:0] ALU_op_final;
 	wire	    ALU_Overflow;
 	wire 	    ALU_CarryOut;
 	wire 	    ALU_Zero;
 	wire [31:0] ALU_Result;
+        reg  [31:0] ALU_Result_reg;
 
 //Signals connected to Shifter
 	wire [31:0] Shifter_A;
 	wire [ 4:0] Shifter_B;
 	wire [ 1:0] Shifter_op;
 	wire [31:0] Shifter_Result;
+        reg  [31:0] Shifter_A_reg;
+	reg  [ 4:0] Shifter_B_reg;
+	reg  [ 1:0] Shifter_op_reg;
+	reg  [31:0] Shifter_Result_reg;
+        wire [ 4:0] Shifter_B_final;    //for reuse shifter by swx shifter
 
 //Signals connected to Reg_file
 	wire [ 4:0] 	RF_raddr1;
@@ -191,6 +203,7 @@ module simple_cpu(
 		end
 		else if(current_state[1] & ~rst) begin 
 			PC <= ALU_Result; 
+                        //note that is not reg, because valid in only one clock
 			//all OP refresh in ID, judge by IF
 		end
 		else if(current_state[3] & ~rst &(|Instruction_Reg))begin 
@@ -198,6 +211,8 @@ module simple_cpu(
 			//j or br OP refresh in next IF, judge by EX
 			//note that the default result is PC
 		end
+		else 
+			PC <= PC;
 	end
 	
 //Analyse Instruction code
@@ -247,46 +262,85 @@ module simple_cpu(
 		//move	 (rt 0)  2 :			opcode[5:0]=000000 & func[5:1]=00101
 			//move rs to rd, 
 			//we can use ALU(ADD/SUB) or no, and we should care the condition about Reg_wen
-
-	assign ALU_op = current_state[1]			? 3'b010 :
-			(~|opcode[5:0]) & func[5]==1'b1 	? (func[3:2]==2'b00 ? {func[1],2'b10}		:
+        assign ALU_op_origin = (~|opcode[5:0]) & func[5]==1'b1 	? (func[3:2]==2'b00 ? {func[1],2'b10}		:
 						 		  func[3:2]==2'b01 ? {func[1],1'b0,func[0]} 	:
 								  func[3:2]==2'b10 ? {~func[0],2'b11} 		:
 								  0 ) 	 :
-			opcode[5:3]==3'b001 & (~&opcode[2:0])	? (opcode[2:1]==2'b00 ? {opcode[1],2'b10} 	:
-								  opcode[2]==1'b1 ? {opcode[1],1'b0,opcode[0]} 	:
-								  opcode[2:1]==2'b01 ? {~opcode[0],2'b11} 	:
-								  0 ) 	 :
-			opcode[5:0]==6'b000001			? 3'b111 :
-			opcode[5:2]==4'b0001 			? 3'b110 :
-			opcode[5]  ==1'b1			? 3'b010 :
-			opcode[5:0]==6'b000011 | ((~|opcode[5:0]) & func[5:0]== 6'b001001)	? 3'b010 :
-			0; //default
-	assign ALU_A =  current_state[1]						  ? PC	   : 
-			opcode[5:0]==6'b000011 | ((~|opcode[5:0]) & func[5:0]==6'b001001) ? PC_Reg : 
-			RF_rdata1;
+                                opcode[5:3]==3'b001 & (~&opcode[2:0])	? (opcode[2:1]==2'b00 ? {opcode[1],2'b10} 	:
+                                                                        opcode[2]==1'b1 ? {opcode[1],1'b0,opcode[0]} 	:
+                                                                        opcode[2:1]==2'b01 ? {~opcode[0],2'b11} 	:
+                                                                        0 ) 	 :
+                                opcode[5:0]==6'b000001			? 3'b111 :
+                                opcode[5:2]==4'b0001 			? 3'b110 :
+                                opcode[5]  ==1'b1			? 3'b010 :
+                                opcode[5:0]==6'b000011 | ((~|opcode[5:0]) & func[5:0]== 6'b001001)	? 3'b010 :
+                                0; //default
+        
+        always @(posedge clk) begin
+                if(rst)
+                        ALU_op_reg <=0;
+                else if(current_state[2]) //ID
+                        ALU_op_reg <= ALU_op_origin;
+		else 
+			ALU_op_reg <= ALU_op_reg;
+        end
+
+	assign ALU_op_final = current_state[1] ? 3'b010 : ALU_op_reg;
+			
+        assign ALU_A_origin =   opcode[5:0]==6'b000011 | ((~|opcode[5:0]) & func[5:0]==6'b001001) ? PC_Reg : 
+			        RF_rdata1;
+
+        always @(posedge clk) begin
+                if(rst)
+                        ALU_A_reg <= 0;
+                else if(current_state[2])//ID
+                        ALU_A_reg <= ALU_A_origin;
+		else 
+			ALU_A_reg <= ALU_A_reg;
+        end
+
+	assign ALU_A_final =  current_state[1]	? PC : ALU_A_reg; 
+		
 	//ALU_B: 4 / 8/ rt / 0 / sign_extend(imm) /zero_extend(imm)
 	//imm_extension: I_calc 6 + load and store 12
 		//zero_extension : ANDI ORI XORI 	opcode[2]=1
 		//sign_extension : ADDIU SLTI SLTIU	opcode[2]=0    load and store: opcode[5]==1
-	assign ALU_B =  current_state[1]			? 32'd4							:
-			opcode[5:3]==3'b001 & (~&opcode[2:0]) 	? ( opcode[2] ? zero_extension : sign_extension )	:
-			opcode[5]				? sign_extension 					:
-			opcode[5:0]==6'b000001 			? 32'b0							:
-			opcode[5:0]==6'b000011 | ((~|opcode[5:0]) & func[5:0]== 6'b001001)	? 32'd8			:
-			RF_rdata2;
-	
+	assign ALU_B_origin =   opcode[5:3]==3'b001 & (~&opcode[2:0]) 	? ( opcode[2] ? zero_extension : sign_extension )	:
+                                opcode[5]				? sign_extension 					:
+                                opcode[5:0]==6'b000001 			? 32'b0							:
+                                opcode[5:0]==6'b000011 | ((~|opcode[5:0]) & func[5:0]== 6'b001001)	? 32'd8			:
+                                RF_rdata2;
+        always @(posedge clk) begin
+                if(rst)
+                        ALU_B_reg <= 0;
+                else if(current_state[2])
+                        ALU_B_reg <= ALU_B_origin;
+		else 
+			ALU_B_reg <= ALU_B_reg;
+        end
+
+        assign ALU_B_final =  current_state[1]	? 32'd4	: ALU_B_reg;
+
+        always @(posedge clk) begin
+                if(rst)
+                        ALU_Result_reg <= 0;
+                else if(current_state[3])//EX
+                        ALU_Result_reg <= ALU_Result;
+		else 
+			ALU_Result_reg <= ALU_Result_reg;
+        end
+
 	alu alu_inst(
-	   .A(ALU_A),
-	   .B(ALU_B),
-	   .ALUop(ALU_op),
+	   .A(ALU_A_final),
+	   .B(ALU_B_final),
+	   .ALUop(ALU_op_final),
 	   .Overflow(ALU_Overflow),
 	   .CarryOut(ALU_CarryOut),
 	   .Zero(ALU_Zero),
 	   .Result(ALU_Result)
 	);
 	
-//signals connected to Shifter
+//signals connected to Shifter 
 	//Operation related to Shifter list: 6 + 2(swl swr)
 	//B width is 5
 	//R shift: opcode[5:0]=000000 & funct[5:3]=000
@@ -297,15 +351,38 @@ module simple_cpu(
 	assign Shifter_op = (~|opcode[5:0])&(~|func[5:3])		? func[1:0]		: 
 			    {opcode[5:3],opcode[1:0]} == 5'b10110	? {~opcode[2],1'b0}	:
 			    0;
+        always @(posedge clk) begin
+                if(current_state[2])
+                        Shifter_op_reg <= Shifter_op;
+        end
+
 	assign Shifter_A = RF_rdata2;
-	assign Shifter_B = (~|opcode[5:0])&(~|func[5:3])		? (func[2] ? RF_rdata1[4:0] : sa)	  :
-			   {opcode[5:3],opcode[1:0]} == 5'b10110	? (opcode[2] ? swr_shifter : swl_shifter) :
-			   0;
+        always @(posedge clk) begin
+                if(current_state[2])
+                        Shifter_A_reg <= Shifter_A;
+        end
+
+        assign Shifter_B = (~|opcode[5:0])&(~|func[5:3]) ? (func[2] ? RF_rdata1[4:0] : sa) : 0 ;
+        always @(posedge clk) begin
+                if(current_state[2])
+                        Shifter_B_reg <= Shifter_B;
+        end
+        //reuse shifter by swx in MEM
+	assign Shifter_B_final = current_state[4] & {opcode[5:3],opcode[1:0]} == 5'b10110 ? 
+                                (opcode[2] ? swr_shifter : swl_shifter) :
+			        Shifter_B_reg;
 	
+        always @(posedge clk) begin
+                if(rst)
+                        Shifter_Result_reg <= 0;
+                else if(current_state[3])
+                        Shifter_Result_reg <= Shifter_Result;
+        end
+
 	shifter shifter_inst(
-	   .A(Shifter_A),
-	   .B(Shifter_B),
-	   .Shiftop(Shifter_op),
+	   .A(Shifter_A_reg),
+	   .B(Shifter_B_final),
+	   .Shiftop(Shifter_op_reg),
 	   .Result(Shifter_Result)
 	);
 	
@@ -331,7 +408,7 @@ module simple_cpu(
 		//store 	5 	opcode[5:3]=101
 		//J 		1	opcode[5:0]=000010
 		//JR 		1 	opcode[5:0]=000000 & func[5:0]=001000
-	assign RF_wen = (current_state == WB) & 
+	assign RF_wen = (current_state[5] ) & //WB 
 			((opcode[5:0]==6'b000000 & func[5]==1'b1) 	 	| 
 			(opcode[5:3]==3'b001 & (~&opcode[2:0]))  	 	|
 			(opcode[5:3]==3'b100)				 	|
@@ -345,9 +422,9 @@ module simple_cpu(
 			  rd ;
 	assign RF_wdata = ((opcode[5:0]==6'b000000 & func[5:1]==5'b00101) & ((func[0] & (|RF_rdata2))|(~func[0] & (~|RF_rdata2))))	? RF_rdata1		:
 			   (opcode[5:3]==3'b100)											? load_data		: //define below
-			   (opcode[5:0]==6'b000000 & func[5:3]==3'b000) 							  	? Shifter_Result 	:
+			   (opcode[5:0]==6'b000000 & func[5:3]==3'b000) 							  	? Shifter_Result_reg 	:
 			   (opcode[5:0]==6'b001111)											? {imm,16'b0} 		:
-			   ALU_Result ;
+			   ALU_Result_reg ;
 						
 	reg_file reg_file_inst(
 		.clk(clk),
@@ -391,28 +468,28 @@ module simple_cpu(
 	//mem control
 	assign MemRead  = current_state[4] & ~opcode[3]; //MEM   //100
 	assign MemWrite = current_state[4] &  opcode[3]; //MEM	//101
-	assign Address  = {ALU_Result[31:2] , 2'b0};
+	assign Address  = {ALU_Result_reg[31:2] , 2'b0};
 	
 	//load data  mem -> rt
 		//byte means vaddr/ALU_result[2:0] 	memword means Read_data
 	
-	assign lb_data = 	({ 32{~ALU_Result[1] & ~ALU_Result[0]} } & { {24{Read_data_Reg[ 7]}} , Read_data_Reg[ 7: 0] } )	|
-				({ 32{~ALU_Result[1] &  ALU_Result[0]} } & { {24{Read_data_Reg[15]}} , Read_data_Reg[15: 8] } )	|
-				({ 32{ ALU_Result[1] & ~ALU_Result[0]} } & { {24{Read_data_Reg[23]}} , Read_data_Reg[23:16] } )	|
-				({ 32{ ALU_Result[1] &  ALU_Result[0]} } & { {24{Read_data_Reg[31]}} , Read_data_Reg[31:24] } )	;
-	assign lh_data = 	({ 32{~ALU_Result[1]} } & { {16{Read_data_Reg[15]}} , Read_data_Reg[15: 0] } )   |
-				({ 32{ ALU_Result[1]} } & { {16{Read_data_Reg[31]}} , Read_data_Reg[31:16] } )   ;
+	assign lb_data = 	({ 32{~ALU_Result_reg[1] & ~ALU_Result_reg[0]} } & { {24{Read_data_Reg[ 7]}} , Read_data_Reg[ 7: 0] } )	|
+				({ 32{~ALU_Result_reg[1] &  ALU_Result_reg[0]} } & { {24{Read_data_Reg[15]}} , Read_data_Reg[15: 8] } )	|
+				({ 32{ ALU_Result_reg[1] & ~ALU_Result_reg[0]} } & { {24{Read_data_Reg[23]}} , Read_data_Reg[23:16] } )	|
+				({ 32{ ALU_Result_reg[1] &  ALU_Result_reg[0]} } & { {24{Read_data_Reg[31]}} , Read_data_Reg[31:24] } )	;
+	assign lh_data = 	({ 32{~ALU_Result_reg[1]} } & { {16{Read_data_Reg[15]}} , Read_data_Reg[15: 0] } )   |
+				({ 32{ ALU_Result_reg[1]} } & { {16{Read_data_Reg[31]}} , Read_data_Reg[31:16] } )   ;
 	assign lw_data = 	Read_data_Reg ;
 	assign lbu_data = 	{24'b0 , lb_data[ 7:0]} ;
 	assign lhu_data = 	{16'b0 , lh_data[15:0]} ;
-	assign lwl_data = 	({ 32{~ALU_Result[1] & ~ALU_Result[0]} } & { Read_data_Reg[ 7: 0] , RF_rdata2[23: 0] } )	|
-				({ 32{~ALU_Result[1] &  ALU_Result[0]} } & { Read_data_Reg[15: 0] , RF_rdata2[15: 0] } )	|
-				({ 32{ ALU_Result[1] & ~ALU_Result[0]} } & { Read_data_Reg[23: 0] , RF_rdata2[ 7: 0] } )	|
-				({ 32{ ALU_Result[1] &  ALU_Result[0]} } &   Read_data_Reg[31: 0] )				;
-	assign lwr_data = 	({ 32{~ALU_Result[1] & ~ALU_Result[0]} } &   Read_data_Reg[31: 0] )				|
-				({ 32{~ALU_Result[1] &  ALU_Result[0]} } & { RF_rdata2[31:24] , Read_data_Reg[31: 8] } )	|
-				({ 32{ ALU_Result[1] & ~ALU_Result[0]} } & { RF_rdata2[31:16] , Read_data_Reg[31:16] } )	|
-				({ 32{ ALU_Result[1] &  ALU_Result[0]} } & { RF_rdata2[31: 8] , Read_data_Reg[31:24] } )	;
+	assign lwl_data = 	({ 32{~ALU_Result_reg[1] & ~ALU_Result_reg[0]} } & { Read_data_Reg[ 7: 0] , RF_rdata2[23: 0] } )	|
+				({ 32{~ALU_Result_reg[1] &  ALU_Result_reg[0]} } & { Read_data_Reg[15: 0] , RF_rdata2[15: 0] } )	|
+				({ 32{ ALU_Result_reg[1] & ~ALU_Result_reg[0]} } & { Read_data_Reg[23: 0] , RF_rdata2[ 7: 0] } )	|
+				({ 32{ ALU_Result_reg[1] &  ALU_Result_reg[0]} } &   Read_data_Reg[31: 0] )				;
+	assign lwr_data = 	({ 32{~ALU_Result_reg[1] & ~ALU_Result_reg[0]} } &   Read_data_Reg[31: 0] )				|
+				({ 32{~ALU_Result_reg[1] &  ALU_Result_reg[0]} } & { RF_rdata2[31:24] , Read_data_Reg[31: 8] } )	|
+				({ 32{ ALU_Result_reg[1] & ~ALU_Result_reg[0]} } & { RF_rdata2[31:16] , Read_data_Reg[31:16] } )	|
+				({ 32{ ALU_Result_reg[1] &  ALU_Result_reg[0]} } & { RF_rdata2[31: 8] , Read_data_Reg[31:24] } )	;
 	assign load_data = 	( {32{opcode[2:0]==3'b000}} &  lb_data )	|
 				( {32{opcode[2:0]==3'b001}} &  lh_data )	|
 				( {32{opcode[2:0]==3'b011}} &  lw_data )	|
@@ -420,6 +497,7 @@ module simple_cpu(
 				( {32{opcode[2:0]==3'b101}} & lhu_data )	|
 				( {32{opcode[2:0]==3'b010}} & lwl_data )	|
 				( {32{opcode[2:0]==3'b110}} & lwr_data )	;
+
 	
 	//store data 	rt->mem 
 		//strb is signal showing which bytewrite is valid, code by truthtable //byte means vaddr/ALU_result[2:0]
@@ -429,11 +507,11 @@ module simple_cpu(
 		// 10/2 	0111		01000/8		1100		10000/16
 		// 11/3 	1111		00000/0		1000		11000/24
 	
-	assign sb_strb = { ALU_Result[1]& ALU_Result[0] , ALU_Result[1]& ~ALU_Result[0] , ~ALU_Result[1]& ALU_Result[0] , ~ALU_Result[1]& ~ALU_Result[0]};
-	assign sh_strb = { {2{ALU_Result[1]}} , {2{~ALU_Result[1]}} } ;
+	assign sb_strb = { ALU_Result_reg[1]& ALU_Result_reg[0] , ALU_Result_reg[1]& ~ALU_Result_reg[0] , ~ALU_Result_reg[1]& ALU_Result_reg[0] , ~ALU_Result_reg[1]& ~ALU_Result_reg[0]};
+	assign sh_strb = { {2{ALU_Result_reg[1]}} , {2{~ALU_Result_reg[1]}} } ;
 	assign sw_strb = 4'b1111 ;
-	assign swl_strb = { &ALU_Result[1:0] , ALU_Result[1] , |ALU_Result[1:0] , 1'b1};
-	assign swr_strb = { 1'b1, ~&ALU_Result[1:0] , ~ALU_Result[1], ~|ALU_Result[1:0]} ;
+	assign swl_strb = { &ALU_Result_reg[1:0] , ALU_Result_reg[1] , |ALU_Result_reg[1:0] , 1'b1};
+	assign swr_strb = { 1'b1, ~&ALU_Result_reg[1:0] , ~ALU_Result_reg[1], ~|ALU_Result_reg[1:0]} ;
 	assign Write_strb = 	( {4{opcode[2:0]==3'b000}} & sb_strb )	|
 				( {4{opcode[2:0]==3'b001}} & sh_strb )	|
 				( {4{opcode[2:0]==3'b011}} & sw_strb )	|
@@ -443,8 +521,8 @@ module simple_cpu(
 	assign sb_data	= { 4{RF_rdata2[7:0]} } ;
 	assign sh_data	= { 2{RF_rdata2[15:0]}}	;
 	assign sw_data	= RF_rdata2 ; 
-	assign swl_shifter = {~ALU_Result[1:0] , 3'b0};
-	assign swr_shifter = { ALU_Result[1:0] , 3'b0};
+	assign swl_shifter = {~ALU_Result_reg[1:0] , 3'b0};
+	assign swr_shifter = { ALU_Result_reg[1:0] , 3'b0};
 	// Reuse shifter module to save two shifter
 	// swl_data = RF_rdata2 >> swl_shifter ;
 	// swr_data = RF_rdata2 << swr_shifter ; 
@@ -452,6 +530,7 @@ module simple_cpu(
 				( {32{opcode[2:0]==3'b001}} & sh_data )		|
 				( {32{opcode[2:0]==3'b011}} & sw_data )		|
 				( {32{opcode[1:0]==2'b10}}  & Shifter_Result )	;
+        //Shifter_Re no use reg because swl shifter depend on Read data which valid in MEM, so use reg will delay to WB
 endmodule
 
 
