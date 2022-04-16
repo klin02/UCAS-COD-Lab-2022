@@ -265,15 +265,11 @@ puts(const char *s)
 		//UART_STATUS  : offset from STAT to uart
 	//wait until STAT is not full, then send a characters
 	//use volatile to provide stable access to a particular address
-        /*
-        * OPTIMIZE: 
-        * reverse cond of while to cond of if, save while inside
-        * (char *)(base+1) is equal to (char *)base + 4, save shifter
-        */
 	int i=0;
 	while (s[i]){
-		if (!( *((volatile char *)uart + UART_STATUS) & UART_TX_FIFO_FULL))
-		        *((volatile char *)uart + UART_STATUS)=s[i++];
+		while( (*(volatile char *)(uart + UART_STATUS/4)) & UART_TX_FIFO_FULL)
+			; //wait 
+		*(volatile char *)(uart + UART_TX_FIFO/4)=s[i++];
 	}
 	return i;
 }
