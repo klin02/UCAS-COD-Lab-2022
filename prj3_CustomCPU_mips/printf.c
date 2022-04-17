@@ -273,7 +273,7 @@ puts(const char *s)
 	int i=0;
 	while (s[i]){
 		if (!( *((volatile char *)uart + UART_STATUS) & UART_TX_FIFO_FULL))
-		        *((volatile char *)uart + UART_STATUS)=s[i++];
+		        *((volatile char *)uart + UART_TX_FIFO)=s[i++];
 	}
 	return i;
 }
