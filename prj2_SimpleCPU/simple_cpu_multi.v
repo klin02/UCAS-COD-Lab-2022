@@ -150,6 +150,8 @@ module simple_cpu(
 					next_state = WB;
 				else if(opcode[5]==1'b1)
 					next_state = MEM;
+				else
+					next_state = RST;
 			end
 			//MEM->IF: store: opcode[5:3]=101
 			//MEM->WB: load : opcode[5:3]=100

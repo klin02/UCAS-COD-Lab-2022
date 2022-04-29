@@ -226,6 +226,8 @@ input         intr,
 					next_state = LD;
 				else if(opcode[5:3]==3'b101)
 					next_state = ST;
+				else
+					next_state = RST;
 			end
 			LD: begin
 				if(Mem_Req_Ready)

@@ -235,6 +235,8 @@ module custom_cpu(
 					next_state = LD;
 				else if(S_type)
 					next_state = ST;
+				else
+					next_state = RST;
 			end
 			LD: begin
 				if(Mem_Req_Ready)
