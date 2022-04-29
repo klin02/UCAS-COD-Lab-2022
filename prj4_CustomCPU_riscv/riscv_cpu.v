@@ -221,8 +221,6 @@ module custom_cpu(
 					next_state = LD;
 				else if(S_type)
 					next_state = ST;
-				else
-					next_state = RST;
 			end
 			LD: begin
 				if(Mem_Req_Ready)
@@ -352,10 +350,10 @@ module custom_cpu(
 			U_auipc | J_type | (current_state[8] & (I_jalr | J_type)) ? PC_Reg : 
 			RF_rdata1;
 	assign ALU_B =  current_state[2] | (current_state[8] & (I_jalr | J_type)) ? 32'd4 :
-			I_type & ~(funct3==3'b001 | funct3 == 3'b101)		  ? I_imm :
-			S_type							  ? S_imm : 
-			U_auipc							  ? U_imm : 
-			J_type							  ? J_imm :
+			(I_calc & ~(funct3==3'b001 | funct3 == 3'b101)) | I_load | I_jalr  ? I_imm :
+			S_type							  	   ? S_imm : 
+			U_auipc							 	   ? U_imm : 
+			J_type							 	   ? J_imm :
 			RF_rdata2;
 					
 	alu alu_inst(

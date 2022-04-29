@@ -27,9 +27,9 @@ module custom_cpu(
 	input         Read_data_Valid,
 	output        Read_data_Ready,
 
-`ifdef SIM_RETIRED_FIFO
-	input         inst_retired_fifo_full,
-`endif
+// `ifdef SIM_RETIRED_FIFO
+// 	input         inst_retired_fifo_full,
+// `endif
 
 	input         intr,
 
@@ -387,10 +387,10 @@ module custom_cpu(
                                 current_state[8] & (I_jalr | J_type) ? PC_Reg : 
                                 ALU_A_reg;
 
-        assign ALU_B_origin =   I_type & ~(funct3==3'b001 | funct3 == 3'b101)		  ? I_imm :
-                                S_type							  ? S_imm : 
-                                U_auipc							  ? U_imm : 
-                                J_type							  ? J_imm :
+        assign ALU_B_origin =   (I_calc & ~(funct3==3'b001 | funct3 == 3'b101)) | I_load | I_jalr  ? I_imm :
+                                S_type							  	   ? S_imm : 
+                                U_auipc							  	   ? U_imm : 
+                                J_type							  	   ? J_imm :
                                 RF_rdata2;
         always @(posedge clk) begin
                 //if(current_state[3]) //ID
