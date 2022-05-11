@@ -573,7 +573,7 @@ module custom_cpu(
 	always @ (posedge clk) begin
 		if(rst)
 			inst_cnt <= 32'b0;
-		else if(current_state[1]) //IF
+		else if(current_state[1] & Inst_Req_Ready) //IF
 			inst_cnt <= inst_cnt + 32'b1;
 	end
 	
@@ -587,7 +587,7 @@ module custom_cpu(
 	always @ (posedge clk) begin
 		if(rst)
 			mem_cnt <= 32'b0;
-		else if(current_state[5] | current_state[6]) //ST LD
+		else if((current_state[5] | current_state[6]) & Mem_Req_Ready) //ST LD
 			mem_cnt <= mem_cnt + 32'b1;
 	end
 	

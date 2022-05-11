@@ -135,7 +135,7 @@ module dcache_top (
 	
 //signals about compare result
 	wire Hit;
-	reg  Hit_reg; //use in choosing data from cache or mem
+	reg  Hit_tmp; //use in choosing data from cache or mem
 	
 	wire hit0;
 	wire hit1;
@@ -285,6 +285,9 @@ module dcache_top (
 				else
 					next_state = RECV;
 			end
+
+			default:
+				next_state = WAIT;
 		endcase
 	end
 	
@@ -355,7 +358,7 @@ module dcache_top (
 	always @(posedge clk) begin
 		if(cur_state == TAG_RD) // if hit, get cache data way
 		begin
-			Hit_reg <= Hit;
+			Hit_tmp <= Hit;
 			choose0 <= hit0;
 			choose1 <= hit1;
 			choose2 <= hit2;
@@ -383,7 +386,7 @@ module dcache_top (
 			valid0[6]<= 1'b0; valid1[6]<= 1'b0; valid2[6]<= 1'b0; valid3[6]<= 1'b0;
 			valid0[7]<= 1'b0; valid1[7]<= 1'b0; valid2[7]<= 1'b0; valid3[7]<= 1'b0;
 		end
-		else if(cur_state == REFILL) begin
+		if(cur_state == REFILL) begin
 			if(choose0) 		valid0[set] <= 1'b1;
 			else if(choose1)	valid1[set] <= 1'b1;
 			else if(choose2)	valid2[set] <= 1'b1;
@@ -407,7 +410,7 @@ module dcache_top (
 			else if(choose2)	data2[set] <= mem_block_data;
 			else if(choose3)	data3[set] <= mem_block_data;
 		end
-		else if(cur_state == CACHE_WR) begin
+		if(cur_state == CACHE_WR) begin
 			if(choose0) 		data0[set][ {offset,3'b0} +: 32 ] <= cache_modified_final;
 			else if(choose1)	data1[set][ {offset,3'b0} +: 32 ] <= cache_modified_final;
 			else if(choose2)	data2[set][ {offset,3'b0} +: 32 ] <= cache_modified_final;
@@ -427,16 +430,16 @@ module dcache_top (
             dirty0[7] <= 0; dirty1[7] <= 0; dirty2[7] <= 0; dirty3[7] <= 0;
         end
         else if (cur_state == CACHE_WR) begin
-            if (choose0) dirty0[set] <= 1'b1;
-            else if (choose1) dirty1[set] <= 1'b1;
-            else if (choose2) dirty2[set] <= 1'b1;
-            else if (choose3) dirty3[set] <= 1'b1;
-		end
-		else if (cur_state == REFILL) begin //refill cache with mem data, reset dirty
-			if (choose0) dirty0[set] <= 1'b0;
-            else if (choose1) dirty1[set] <= 1'b0;
-            else if (choose2) dirty2[set] <= 1'b0;
-            else if (choose3) dirty3[set] <= 1'b0;
+            	if (choose0) 		dirty0[set] <= 1'b1;
+            	else if (choose1) 	dirty1[set] <= 1'b1;
+            	else if (choose2) 	dirty2[set] <= 1'b1;
+            	else if (choose3) 	dirty3[set] <= 1'b1;
+	end
+	else if (cur_state == REFILL) begin //refill cache with mem data, reset dirty
+		if (choose0) 	  	dirty0[set] <= 1'b0;
+            	else if (choose1) 	dirty1[set] <= 1'b0;
+            	else if (choose2) 	dirty2[set] <= 1'b0;
+            	else if (choose3) 	dirty3[set] <= 1'b0;
         end
     end
    
@@ -464,8 +467,8 @@ module dcache_top (
 	
 	//choose source
 	assign to_cpu_cache_rsp_data = 	( {32{ bypath}} & bypath_read_data)  		|
-					( {32{~bypath &  Hit_reg}} & cache_final_data) 	|
-					( {32{~bypath & ~Hit_reg}} & mem_final_data)   	;
+					( {32{~bypath &  Hit_tmp}} & cache_final_data) 	|
+					( {32{~bypath & ~Hit_tmp}} & mem_final_data)   	;
 	
 //WRITE : final data from cpu --target : cache(hit or miss) / mem(bypath)
 		//note write back to MEM is dirty block or bypath

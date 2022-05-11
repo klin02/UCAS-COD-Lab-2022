@@ -61,6 +61,8 @@ module predictor(
 				else 
 					prdt_next_state = `S_NTaken ;
 			end
+			default: 
+				prdt_next_state = `RST;
 		endcase
 	end
 	
