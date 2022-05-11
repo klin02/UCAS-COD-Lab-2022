@@ -12,6 +12,7 @@
   
 ### Software：  
 1. printf_backup.c为初始版本  
-2. printf.c为最终版本，节约了内层循环和移位操作  
+2. printf_weak.c为弱化的版本  
+3. printf.c为最终版本，节约了内层循环和移位操作  
 
 通过全部阶段测试  

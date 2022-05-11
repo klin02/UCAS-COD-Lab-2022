@@ -620,7 +620,7 @@ input         intr,
 	reg [31:0]	mem_cnt;		//count the num of mem visit
 	reg [31:0]	mem_delay_cnt;		//count the num of delay of mem,including read and write
 	reg [31:0]	br_j_v_cnt;		//count the num of PC not refresh for PC4
-	reg	[31:0]	br_j_f_cnt;		//count the num of PC refresh for PC4, including instr not br or j
+	reg [31:0]	br_j_f_cnt;		//count the num of PC refresh for PC4, including instr not br or j
 	reg [31:0]	branch_v_cnt;		//count the num of successful branch
 	reg [31:0]	branch_f_cnt;		//count the num of failed branch
 	reg [31:0]	jump_cnt;		//count the num of jump (always success)
@@ -646,7 +646,7 @@ input         intr,
 	always @ (posedge clk) begin
 		if(rst)
 			inst_cnt <= 32'b0;
-		else if(current_state[1]) //IF
+		else if(current_state[1] & Inst_Req_Ready) //IF
 			inst_cnt <= inst_cnt + 32'b1;
 	end
 	
@@ -660,7 +660,7 @@ input         intr,
 	always @ (posedge clk) begin
 		if(rst)
 			mem_cnt <= 32'b0;
-		else if(current_state[5] | current_state[6]) //ST LD
+		else if((current_state[5] | current_state[6]) & Mem_Req_Ready) //ST LD
 			mem_cnt <= mem_cnt + 32'b1;
 	end
 	
