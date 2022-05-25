@@ -45,7 +45,9 @@ module custom_cpu(
 	output [31:0] cpu_perf_cnt_12,
 	output [31:0] cpu_perf_cnt_13,
 	output [31:0] cpu_perf_cnt_14,
-	output [31:0] cpu_perf_cnt_15
+	output [31:0] cpu_perf_cnt_15,
+
+	output [69:0] inst_retire
 );
 
 /* The following signal is leveraged for behavioral simulation, 
@@ -63,7 +65,7 @@ module custom_cpu(
 * }
 *
 */
-  wire [69:0] inst_retire;
+  //wire [69:0] inst_retire;
 
 // TODO: Please add your Turbo CPU code here	
 	//tmp signal for BHV_SIM
