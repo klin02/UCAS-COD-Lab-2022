@@ -45,7 +45,7 @@ input         intr,
 	output [31:0] cpu_perf_cnt_13,
 	output [31:0] cpu_perf_cnt_14,
 	output [31:0] cpu_perf_cnt_15,
-
+	
 	output [69:0] inst_retire
 );
 
@@ -64,7 +64,7 @@ input         intr,
 * }
 *
 */
- // wire [69:0] inst_retire;
+  //wire [69:0] inst_retire;
 
 	// TODO: Please add your custom CPU code here
 //define the state of machine by one-hot
@@ -80,9 +80,9 @@ input         intr,
 //set reg to store state and single_cycle input
 	reg [8:0] 	current_state;
 	reg [8:0] 	next_state;
-	reg [31:0] 	Instruction_Reg;
-	reg [31:0]	Read_data_Reg;
-	reg [31:0]	PC_Reg;
+	reg [31:0] 	Instruction_tmp;
+	reg [31:0]	Read_data_tmp;
+	reg [31:0]	PC_tmp;
 	//PC refresh in ID, set a reg to store origin PC
 	
 //Signals related to IF
@@ -108,8 +108,8 @@ input         intr,
 	
 //Signals connected to MUL
 	wire inst_MUL;
-	// wire MUL_run;
-	// wire MUL_done;
+	wire MUL_run;
+	wire MUL_done;
 	reg [31:0] MUL_A_tmp;
 	reg [31:0] MUL_B_tmp;
 	wire [63:0] MUL_Result;
@@ -118,28 +118,28 @@ input         intr,
 //Signals connected to ALU
         wire [31:0] ALU_A_origin;
         wire [31:0] ALU_B_origin;
-        reg  [31:0] ALU_A_reg;  //not include PC
-        reg  [31:0] ALU_B_reg;
+        reg  [31:0] ALU_A_tmp;  //not include PC
+        reg  [31:0] ALU_B_tmp;
 	wire [31:0] ALU_A_final;
 	wire [31:0] ALU_B_final;
         wire [ 2:0] ALU_op_origin;
-        reg  [ 2:0] ALU_op_reg;
+        reg  [ 2:0] ALU_op_tmp;
 	wire [ 2:0] ALU_op_final;
 	wire	    ALU_Overflow;
 	wire 	    ALU_CarryOut;
 	wire 	    ALU_Zero;
 	wire [31:0] ALU_Result;
-        reg  [31:0] ALU_Result_reg;
+        reg  [31:0] ALU_Result_tmp;
 
 //Signals connected to Shifter
 	wire [31:0] Shifter_A;
 	wire [ 4:0] Shifter_B;
 	wire [ 1:0] Shifter_op;
 	wire [31:0] Shifter_Result;
-        reg  [31:0] Shifter_A_reg;
-	reg  [ 4:0] Shifter_B_reg;
-	reg  [ 1:0] Shifter_op_reg;
-	reg  [31:0] Shifter_Result_reg;
+        reg  [31:0] Shifter_A_tmp;
+	reg  [ 4:0] Shifter_B_tmp;
+	reg  [ 1:0] Shifter_op_tmp;
+	reg  [31:0] Shifter_Result_tmp;
         wire [ 4:0] Shifter_B_final;    //for reuse shifter by swx shifter
 
 //Signals connected to Reg_file
@@ -153,7 +153,8 @@ input         intr,
 
 //Signals connected to PC refresh
 	wire 	    br_en;//branch condition
-	wire [31:0] br_tar;//branch target
+	//wire [31:0] br_tar;//branch target
+        //reuse ALU in ID stage
 	wire 	    j_en;
 	wire [31:0] j_tar;
 
@@ -183,7 +184,7 @@ input         intr,
 	//Using Shifter_Result instead
 	
 //signals related to retired
-	assign inst_retire = {RF_wen , RF_waddr , RF_wdata, PC_Reg};
+	assign inst_retire = {RF_wen , RF_waddr , RF_wdata, PC_tmp};
 
 //define signal for State Machine
 	//set 1 to Inst_Ready and Read_data_Ready to prevent Error
@@ -223,7 +224,7 @@ input         intr,
 			end
 			//NOP: Instr = 32'b0
 			ID: begin
-				if(~|Instruction_Reg)
+				if(~|Instruction_tmp)
 					next_state = IF ;
 				else 
 					next_state = EX ;
@@ -236,7 +237,7 @@ input         intr,
 				//R_Type	18: opcode[5:0]=6'b0 include JALR,JR //JR: rs->GPR[0] 
 				//I_calc	7: opcode[5:3]=001 include LUI
 				//JAL		1: opcode[5:0]=000011
-                                //MUL           inst_MUL
+                                //MUL 		inst_MUL & MUL_done
 			//EX->LD
 				//load 		7: opcode[5:3]=100
 			//EX->ST
@@ -244,14 +245,16 @@ input         intr,
 			EX: begin
 				if((opcode[5:0]==6'b000001) | (opcode[5:2]==4'b0001) | (opcode[5:0]==6'b000010) )
 					next_state = IF;
-				else if((~|opcode)| (opcode[5:3]==3'b001) | (opcode[5:0]==6'b000011)| inst_MUL)
+				else if((~|opcode)| (opcode[5:3]==3'b001) | (opcode[5:0]==6'b000011))
+					next_state = WB;
+                                else if(inst_MUL & MUL_done)
 					next_state = WB;
 				else if(opcode[5:3]==3'b100)
 					next_state = LD;
 				else if(opcode[5:3]==3'b101)
 					next_state = ST;
-                                else 
-                                        next_state = EX;
+				else
+					next_state = EX;
 			end
 			LD: begin
 				if(Mem_Req_Ready)
@@ -284,17 +287,17 @@ input         intr,
 	//one always module to deal one reg
 	always @ (posedge clk) begin
 		if(Inst_Ready & Inst_Valid) //after response
-			Instruction_Reg <= Instruction ;
+			Instruction_tmp <= Instruction ;
 	end
 	
 	always @ (posedge clk) begin
 		if(Read_data_Ready & Read_data_Valid)
-			Read_data_Reg <=Read_data ;
+			Read_data_tmp <=Read_data ;
 	end
 	
 	always @ (posedge clk) begin
 		if(current_state[1])//IF
-			PC_Reg <= PC;
+			PC_tmp <= PC;
 	end
 	
 	always @ (posedge clk) begin
@@ -302,28 +305,35 @@ input         intr,
 			PC <= 32'b0;
 		end
 		else if(current_state[2] & Inst_Valid & ~rst) begin
-			PC <= ALU_Result; 
+			PC <= ALU_Result; //PC+4
 			//IW, consider the cycle before ID
 		end
 		else if(current_state[4] & ~rst)begin 
-			PC <= br_en ? br_tar : j_en ? j_tar : PC ; 
+                        if(br_en)
+                                PC   <= ALU_Result_tmp;
+                                //PC <= br_tar;
+                        else if(j_en)
+                                PC <= j_tar;
+                        else    
+                                PC <= PC;
+			//PC <= br_en ? br_tar : j_en ? j_tar : PC ; 
 			//j or br OP refresh in next IF, judge by EX
 			//note that the default result is PC4
 		end
 	end
 //Analyse Instruction code
-	assign opcode   = Instruction_Reg[31:26];
-	assign rs	= Instruction_Reg[25:21];
-	assign rt	= Instruction_Reg[20:16];
-	assign rd	= Instruction_Reg[15:11];
-	assign sa	= Instruction_Reg[10:6];
-	assign func	= Instruction_Reg[5:0];
-	assign imm	= Instruction_Reg[15:0]; //or offset
-	assign index	= Instruction_Reg[25:0]; 
+	assign opcode   = Instruction_tmp[31:26];
+	assign rs	= Instruction_tmp[25:21];
+	assign rt	= Instruction_tmp[20:16];
+	assign rd	= Instruction_tmp[15:11];
+	assign sa	= Instruction_tmp[10:6];
+	assign func	= Instruction_tmp[5:0];
+	assign imm	= Instruction_tmp[15:0]; //or offset
+	assign index	= Instruction_tmp[25:0]; 
 	
 //PC4 and PC8 prepared for PC refresh
 	// assign PC4 = PC +4;
-	// assign PC8 = PC_Reg +8;
+	// assign PC8 = PC_tmp +8;
 	
 //extension prepared for operation
 	assign zero_extension = {16'b0, imm};
@@ -333,6 +343,7 @@ input         intr,
 	
 //Signals connected to MUL
         assign inst_MUL = opcode==6'b011100 & func == 6'b000010;
+        assign MUL_run = current_state == EX & inst_MUL;
         always@(posedge clk) begin
                 if(rst)
                         MUL_A_tmp <= 32'b0;
@@ -347,12 +358,20 @@ input         intr,
                         MUL_B_tmp <= RF_rdata2;
         end
 
-        assign MUL_Result = MUL_A_tmp * MUL_B_tmp;
+        mul mul_inst(
+		.clk		(clk),
+		.rst		(rst),
+		.a		(MUL_A_tmp),
+		.b		(MUL_B_tmp),
+		.run		(MUL_run),
+		.result		(MUL_Result),
+		.done		(MUL_done)
+	);
 
         always@(posedge clk) begin
                 if(rst)
                         MUL_Result_tmp <= 64'b0;
-                else if(current_state[4])
+                else if(current_state[4] & MUL_done) //EX
                         MUL_Result_tmp <= MUL_Result;
         end
 
@@ -376,72 +395,65 @@ input         intr,
 			//move rs to rd, 
 			//we can use ALU(ADD/SUB) or no, and we should care the condition about Reg_wen
         
-        assign ALU_op_origin = (~|opcode[5:0]) & func[5]==1'b1 	? (func[3:2]==2'b00 ? {func[1],2'b10}		:
-						 		  func[3:2]==2'b01 ? {func[1],1'b0,func[0]} 	:
-								  func[3:2]==2'b10 ? {~func[0],2'b11} 		:
-								  0 ) 	 :
-                                opcode[5:3]==3'b001 & (~&opcode[2:0])	? (opcode[2:1]==2'b00 ? {opcode[1],2'b10} 	:
-                                                                        opcode[2]==1'b1 ? {opcode[1],1'b0,opcode[0]} 	:
-                                                                        opcode[2:1]==2'b01 ? {~opcode[0],2'b11} 	:
-                                                                        0 ) 	 :
-                                opcode[5:0]==6'b000001			? 3'b111 :
-                                opcode[5:2]==4'b0001 			? 3'b110 :
-                                opcode[5]  ==1'b1			? 3'b010 :
-                                opcode[5:0]==6'b000011 | ((~|opcode[5:0]) & func[5:0]== 6'b001001)	? 3'b010 :
-                                0; //default
+        assign ALU_op_origin = ({3{(~|opcode[5:0]) & func[5]==1'b1}} & ({3{func[3:2]==2'b00}} & {func[1],2'b10}	        |
+						 		        {3{func[3:2]==2'b01}} & {func[1],1'b0,func[0]} 	|
+								        {3{func[3:2]==2'b10}} & {~func[0],2'b11}        )
+				) |
+                                ({3{opcode[5:3]==3'b001 & (~&opcode[2:0])}} & ( {3{opcode[2:1]==2'b00}} & {opcode[1],2'b10} 	     |
+                                                                                {3{opcode[2]==1'b1}}    & {opcode[1],1'b0,opcode[0]} |	
+                                                                                {3{opcode[2:1]==2'b01}} & {~opcode[0],2'b11} 	     )  
+                                ) |
+                                ({3{opcode[5:0]==6'b000001}} & 3'b111 ) | 
+                                ({3{opcode[5:2]==4'b0001 }}  & 3'b110 ) | 
+                                ({3{opcode[5]  ==1'b1 }}     & 3'b010 ) |
+                                ({3{opcode[5:0]==6'b000011 | ((~|opcode[5:0]) & func[5:0]== 6'b001001) }} & 3'b010 );
         
         always @(posedge clk) begin
                 if(rst)
-                        ALU_op_reg <=0;
-                else if(current_state[3]) //ID
-                        ALU_op_reg <= ALU_op_origin;
-		else 
-			ALU_op_reg <= ALU_op_reg;
+                        ALU_op_tmp <=0;
+                else 
+                        ALU_op_tmp <= ALU_op_origin;
         end
 
-	assign ALU_op_final = current_state[2] ? 3'b010 : ALU_op_reg;
+	assign ALU_op_final = current_state[2] | current_state[3] ? 3'b010 : ALU_op_tmp;
 	
-        assign ALU_A_origin =   opcode[5:0]==6'b000011 | ((~|opcode[5:0]) & func[5:0]==6'b001001) ? PC_Reg : 
+        assign ALU_A_origin =   opcode[5:0]==6'b000011 | ((~|opcode[5:0]) & func[5:0]==6'b001001) ? PC_tmp : 
 			        RF_rdata1;
 
         always @(posedge clk) begin
                 if(rst)
-                        ALU_A_reg <= 0;
-                else if(current_state[3])//ID
-                        ALU_A_reg <= ALU_A_origin;
-		else 
-			ALU_A_reg <= ALU_A_reg;
+                        ALU_A_tmp <= 0;
+                else
+                        ALU_A_tmp <= ALU_A_origin;
         end
 
-	assign ALU_A_final =  current_state[2]	? PC : ALU_A_reg;
+	assign ALU_A_final =  current_state[2] | current_state[3] ? PC : ALU_A_tmp;
 
 	//ALU_B: 4 / 8/ rt / 0 / sign_extend(imm) /zero_extend(imm)
 	//imm_extension: I_calc 6 + load and store 12
 		//zero_extension : ANDI ORI XORI 	opcode[2]=1
 		//sign_extension : ADDIU SLTI SLTIU	opcode[2]=0    load and store: opcode[5]==1
-	assign ALU_B_origin =   opcode[5:3]==3'b001 & (~&opcode[2:0]) 	? ( opcode[2] ? zero_extension : sign_extension )	:
-                                opcode[5]				? sign_extension 					:
-                                opcode[5:0]==6'b000001 			? 32'b0							:
-                                opcode[5:0]==6'b000011 | ((~|opcode[5:0]) & func[5:0]== 6'b001001)	? 32'd8			:
-                                RF_rdata2;
+	assign ALU_B_origin =   {32{opcode[5:3]==3'b001 & (~&opcode[2:0])}}     & ( opcode[2] ? zero_extension : sign_extension )	|
+                                {32{opcode[5]}}				        & sign_extension 					|
+                                {32{opcode[5:0]==6'b000001}} 		        & 32'b0						        |
+                                {32{opcode[5:0]==6'b000011 | ((~|opcode[5:0])   & func[5:0]== 6'b001001)}} & 32'd8		        |
+                                {32{(~|opcode)&func[5] | opcode[5:2]==4'b0001}} & RF_rdata2                                             ;
         always @(posedge clk) begin
                 if(rst)
-                        ALU_B_reg <= 0;
-                else if(current_state[3]) //ID
-                        ALU_B_reg <= ALU_B_origin;
-		else 
-			ALU_B_reg <= ALU_B_reg;
+                        ALU_B_tmp <= 0;
+                else
+                        ALU_B_tmp <= ALU_B_origin;
         end
 
-        assign ALU_B_final =  current_state[2]	? 32'd4	: ALU_B_reg;
+        assign ALU_B_final =    current_state[2]	? 32'd4	:
+                                current_state[3]        ? br_extension :
+                                ALU_B_tmp;
         
 	always @(posedge clk) begin
                 if(rst)
-                        ALU_Result_reg <= 0;
-                else if(current_state[4])//EX
-                        ALU_Result_reg <= ALU_Result;
-		else 
-			ALU_Result_reg <= ALU_Result_reg;
+                        ALU_Result_tmp <= 0;
+                else
+                        ALU_Result_tmp <= ALU_Result;
         end
 
 	alu alu_inst(
@@ -466,37 +478,34 @@ input         intr,
 			    {opcode[5:3],opcode[1:0]} == 5'b10110	? {~opcode[2],1'b0}	:
 			    0;
         always @(posedge clk) begin
-                if(current_state[3])
-                        Shifter_op_reg <= Shifter_op;
+                        Shifter_op_tmp <= Shifter_op;
         end
 
 	assign Shifter_A = RF_rdata2;
         always @(posedge clk) begin
-                if(current_state[3])
-                        Shifter_A_reg <= Shifter_A;
+                        Shifter_A_tmp <= Shifter_A;
         end
 
         assign Shifter_B = (~|opcode[5:0])&(~|func[5:3]) ? (func[2] ? RF_rdata1[4:0] : sa) : 0 ;
         always @(posedge clk) begin
-                if(current_state[3])
-                        Shifter_B_reg <= Shifter_B;
+                        Shifter_B_tmp <= Shifter_B;
         end
         //reuse shifter by swx in MEM
 	assign Shifter_B_final = current_state[6] & opcode[1:0] == 2'b10 ? //ST swl or swr
                                 (opcode[2] ? swr_shifter : swl_shifter) :
-			        Shifter_B_reg;
+			        Shifter_B_tmp;
 
-	 always @(posedge clk) begin
+	always @(posedge clk) begin
                 if(rst)
-                        Shifter_Result_reg <= 0;
-                else if(current_state[4])//EX
-                        Shifter_Result_reg <= Shifter_Result;
+                        Shifter_Result_tmp <= 0;
+                else
+                        Shifter_Result_tmp <= Shifter_Result;
         end
 
 	shifter shifter_inst(
-	   .A(Shifter_A_reg),
+	   .A(Shifter_A_tmp),
 	   .B(Shifter_B_final),
-	   .Shiftop(Shifter_op_reg),
+	   .Shiftop(Shifter_op_tmp),
 	   .Result(Shifter_Result)
 	);
 	
@@ -537,12 +546,12 @@ input         intr,
                           (opcode[5:3]==3'b100 | opcode[5:3]==3'b001 ) 	? rt 	:
 			  (opcode[5:0]==6'b000011) 		  	? 5'd31 :
 			  rd ;
-	assign RF_wdata =  inst_MUL ? MUL_Result_tmp[31:0] :
-                           ((opcode[5:0]==6'b000000 & func[5:1]==5'b00101) & ((func[0] & (|RF_rdata2))|(~func[0] & (~|RF_rdata2))))	? RF_rdata1		:
-			   (opcode[5:3]==3'b100)											? load_data		: //define below
-			   (opcode[5:0]==6'b000000 & func[5:3]==3'b000) 							  	? Shifter_Result_reg 	:
-			   (opcode[5:0]==6'b001111)											? {imm,16'b0} 		:
-			   ALU_Result_reg ;
+	assign RF_wdata =  {32{inst_MUL}} & MUL_Result_tmp[31:0]   |
+                           {32{(opcode[5:0]==6'b000000 & func[5:1]==5'b00101) & ((func[0] & (|RF_rdata2))|(~func[0] & (~|RF_rdata2)))}}  & RF_rdata1		|
+			   {32{opcode[5:3]==3'b100}}											 & load_data		| //define below
+			   {32{opcode[5:0]==6'b000000 & func[5:3]==3'b000}} 							  	 & Shifter_Result_tmp 	|
+			   {32{opcode[5:0]==6'b001111}}											 & {imm,16'b0} 		|
+			   {32{(~|opcode)&(func[5]|func[5:0]==6'b001001) | opcode[5:3]==3'b001&(~&opcode[2:0]) | opcode[5:0]==6'b000011}}& ALU_Result_tmp       ;
 						
 	reg_file reg_file_inst(
 		.clk(clk),
@@ -575,8 +584,8 @@ input         intr,
 							(rt[0]  & ~ALU_Result[0])
 							)
 			) ;
-	assign br_tar = PC + br_extension ; 
-	//cannot reuse ALU, because the cond will store until PC refresh is done, so we cannot change input of ALU
+	//assign br_tar = PC + br_extension ; 
+	//reuse alu in ID stage, but note PC refresh cond should be ~|Instr_reg
 	assign j_en = (opcode[5:1]==5'b00001) | ((~|opcode[5:0])&func[5:1]==5'b00100) ;
 	assign j_tar  = ({32{(opcode[5:1]==5'b00001)}} & j_extension )			|	
 			({32{((~|opcode[5:0])&func[5:1]==5'b00100)}} & RF_rdata1);
@@ -587,28 +596,28 @@ input         intr,
 	//mem control
 	assign MemRead  = current_state[5];  //LD //100
 	assign MemWrite = current_state[6];  //ST //101
-	assign Address  = {ALU_Result_reg[31:2] , 2'b0};
+	assign Address  = {ALU_Result_tmp[31:2] , 2'b0};
 	
 	//load data  mem -> rt
 		//byte means vaddr/ALU_result[2:0] 	memword means Read_data
 	
-	assign lb_data = 	({ 32{~ALU_Result_reg[1] & ~ALU_Result_reg[0]} } & { {24{Read_data_Reg[ 7]}} , Read_data_Reg[ 7: 0] } )	|
-				({ 32{~ALU_Result_reg[1] &  ALU_Result_reg[0]} } & { {24{Read_data_Reg[15]}} , Read_data_Reg[15: 8] } )	|
-				({ 32{ ALU_Result_reg[1] & ~ALU_Result_reg[0]} } & { {24{Read_data_Reg[23]}} , Read_data_Reg[23:16] } )	|
-				({ 32{ ALU_Result_reg[1] &  ALU_Result_reg[0]} } & { {24{Read_data_Reg[31]}} , Read_data_Reg[31:24] } )	;
-	assign lh_data = 	({ 32{~ALU_Result_reg[1]} } & { {16{Read_data_Reg[15]}} , Read_data_Reg[15: 0] } )   |
-				({ 32{ ALU_Result_reg[1]} } & { {16{Read_data_Reg[31]}} , Read_data_Reg[31:16] } )   ;
-	assign lw_data = 	Read_data_Reg ;
+	assign lb_data = 	({ 32{~ALU_Result_tmp[1] & ~ALU_Result_tmp[0]} } & { {24{Read_data_tmp[ 7]}} , Read_data_tmp[ 7: 0] } )	|
+				({ 32{~ALU_Result_tmp[1] &  ALU_Result_tmp[0]} } & { {24{Read_data_tmp[15]}} , Read_data_tmp[15: 8] } )	|
+				({ 32{ ALU_Result_tmp[1] & ~ALU_Result_tmp[0]} } & { {24{Read_data_tmp[23]}} , Read_data_tmp[23:16] } )	|
+				({ 32{ ALU_Result_tmp[1] &  ALU_Result_tmp[0]} } & { {24{Read_data_tmp[31]}} , Read_data_tmp[31:24] } )	;
+	assign lh_data = 	({ 32{~ALU_Result_tmp[1]} } & { {16{Read_data_tmp[15]}} , Read_data_tmp[15: 0] } )   |
+				({ 32{ ALU_Result_tmp[1]} } & { {16{Read_data_tmp[31]}} , Read_data_tmp[31:16] } )   ;
+	assign lw_data = 	Read_data_tmp ;
 	assign lbu_data = 	{24'b0 , lb_data[ 7:0]} ;
 	assign lhu_data = 	{16'b0 , lh_data[15:0]} ;
-	assign lwl_data = 	({ 32{~ALU_Result_reg[1] & ~ALU_Result_reg[0]} } & { Read_data_Reg[ 7: 0] , RF_rdata2[23: 0] } )	|
-				({ 32{~ALU_Result_reg[1] &  ALU_Result_reg[0]} } & { Read_data_Reg[15: 0] , RF_rdata2[15: 0] } )	|
-				({ 32{ ALU_Result_reg[1] & ~ALU_Result_reg[0]} } & { Read_data_Reg[23: 0] , RF_rdata2[ 7: 0] } )	|
-				({ 32{ ALU_Result_reg[1] &  ALU_Result_reg[0]} } &   Read_data_Reg[31: 0] )				;
-	assign lwr_data = 	({ 32{~ALU_Result_reg[1] & ~ALU_Result_reg[0]} } &   Read_data_Reg[31: 0] )				|
-				({ 32{~ALU_Result_reg[1] &  ALU_Result_reg[0]} } & { RF_rdata2[31:24] , Read_data_Reg[31: 8] } )	|
-				({ 32{ ALU_Result_reg[1] & ~ALU_Result_reg[0]} } & { RF_rdata2[31:16] , Read_data_Reg[31:16] } )	|
-				({ 32{ ALU_Result_reg[1] &  ALU_Result_reg[0]} } & { RF_rdata2[31: 8] , Read_data_Reg[31:24] } )	;
+	assign lwl_data = 	({ 32{~ALU_Result_tmp[1] & ~ALU_Result_tmp[0]} } & { Read_data_tmp[ 7: 0] , RF_rdata2[23: 0] } )	|
+				({ 32{~ALU_Result_tmp[1] &  ALU_Result_tmp[0]} } & { Read_data_tmp[15: 0] , RF_rdata2[15: 0] } )	|
+				({ 32{ ALU_Result_tmp[1] & ~ALU_Result_tmp[0]} } & { Read_data_tmp[23: 0] , RF_rdata2[ 7: 0] } )	|
+				({ 32{ ALU_Result_tmp[1] &  ALU_Result_tmp[0]} } &   Read_data_tmp[31: 0] )				;
+	assign lwr_data = 	({ 32{~ALU_Result_tmp[1] & ~ALU_Result_tmp[0]} } &   Read_data_tmp[31: 0] )				|
+				({ 32{~ALU_Result_tmp[1] &  ALU_Result_tmp[0]} } & { RF_rdata2[31:24] , Read_data_tmp[31: 8] } )	|
+				({ 32{ ALU_Result_tmp[1] & ~ALU_Result_tmp[0]} } & { RF_rdata2[31:16] , Read_data_tmp[31:16] } )	|
+				({ 32{ ALU_Result_tmp[1] &  ALU_Result_tmp[0]} } & { RF_rdata2[31: 8] , Read_data_tmp[31:24] } )	;
 	assign load_data = 	( {32{opcode[2:0]==3'b000}} &  lb_data )	|
 				( {32{opcode[2:0]==3'b001}} &  lh_data )	|
 				( {32{opcode[2:0]==3'b011}} &  lw_data )	|
@@ -626,11 +635,11 @@ input         intr,
 		// 10/2 	0111		01000/8		1100		10000/16
 		// 11/3 	1111		00000/0		1000		11000/24
 	
-	assign sb_strb = { ALU_Result_reg[1]& ALU_Result_reg[0] , ALU_Result_reg[1]& ~ALU_Result_reg[0] , ~ALU_Result_reg[1]& ALU_Result_reg[0] , ~ALU_Result_reg[1]& ~ALU_Result_reg[0]};
-	assign sh_strb = { {2{ALU_Result_reg[1]}} , {2{~ALU_Result_reg[1]}} } ;
+	assign sb_strb = { ALU_Result_tmp[1]& ALU_Result_tmp[0] , ALU_Result_tmp[1]& ~ALU_Result_tmp[0] , ~ALU_Result_tmp[1]& ALU_Result_tmp[0] , ~ALU_Result_tmp[1]& ~ALU_Result_tmp[0]};
+	assign sh_strb = { {2{ALU_Result_tmp[1]}} , {2{~ALU_Result_tmp[1]}} } ;
 	assign sw_strb = 4'b1111 ;
-	assign swl_strb = { &ALU_Result_reg[1:0] , ALU_Result_reg[1] , |ALU_Result_reg[1:0] , 1'b1};
-	assign swr_strb = { 1'b1, ~&ALU_Result_reg[1:0] , ~ALU_Result_reg[1], ~|ALU_Result_reg[1:0]} ;
+	assign swl_strb = { &ALU_Result_tmp[1:0] , ALU_Result_tmp[1] , |ALU_Result_tmp[1:0] , 1'b1};
+	assign swr_strb = { 1'b1, ~&ALU_Result_tmp[1:0] , ~ALU_Result_tmp[1], ~|ALU_Result_tmp[1:0]} ;
 	assign Write_strb = 	( {4{opcode[2:0]==3'b000}} & sb_strb )	|
 				( {4{opcode[2:0]==3'b001}} & sh_strb )	|
 				( {4{opcode[2:0]==3'b011}} & sw_strb )	|
@@ -640,8 +649,8 @@ input         intr,
 	assign sb_data	= { 4{RF_rdata2[7:0]} } ;
 	assign sh_data	= { 2{RF_rdata2[15:0]}}	;
 	assign sw_data	= RF_rdata2 ; 
-	assign swl_shifter = {~ALU_Result_reg[1:0] , 3'b0};
-	assign swr_shifter = { ALU_Result_reg[1:0] , 3'b0};
+	assign swl_shifter = {~ALU_Result_tmp[1:0] , 3'b0};
+	assign swr_shifter = { ALU_Result_tmp[1:0] , 3'b0};
 	// Reuse shifter module to save two shifter
 	// swl_data = RF_rdata2 >> swl_shifter ;
 	// swr_data = RF_rdata2 << swr_shifter ; 
@@ -662,7 +671,7 @@ input         intr,
 	reg [31:0]	mem_cnt;		//count the num of mem visit
 	reg [31:0]	mem_delay_cnt;		//count the num of delay of mem,including read and write
 	reg [31:0]	br_j_v_cnt;		//count the num of PC not refresh for PC4
-	reg	[31:0]	br_j_f_cnt;		//count the num of PC refresh for PC4, including instr not br or j
+	reg [31:0]	br_j_f_cnt;		//count the num of PC refresh for PC4, including instr not br or j
 	reg [31:0]	branch_v_cnt;		//count the num of successful branch
 	reg [31:0]	branch_f_cnt;		//count the num of failed branch
 	reg [31:0]	jump_cnt;		//count the num of jump (always success)
@@ -688,7 +697,7 @@ input         intr,
 	always @ (posedge clk) begin
 		if(rst)
 			inst_cnt <= 32'b0;
-		else if(current_state[1]) //IF
+		else if(current_state[1] & Inst_Req_Ready) //IF
 			inst_cnt <= inst_cnt + 32'b1;
 	end
 	
@@ -702,7 +711,7 @@ input         intr,
 	always @ (posedge clk) begin
 		if(rst)
 			mem_cnt <= 32'b0;
-		else if(current_state[5] | current_state[6]) //ST LD
+		else if((current_state[5] | current_state[6]) & Mem_Req_Ready) //ST LD
 			mem_cnt <= mem_cnt + 32'b1;
 	end
 	
