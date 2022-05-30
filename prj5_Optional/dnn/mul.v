@@ -8,7 +8,6 @@ module mul(
 	output [63:0] result,
 	output done
 );
-	//assign run=1'b1;
 //booth算法 将连续数位1转化为前后位的两个1相减 从而减少相加次数
 
 	reg [2:0] i; //procedure

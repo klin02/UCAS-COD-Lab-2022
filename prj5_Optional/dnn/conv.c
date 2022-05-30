@@ -321,11 +321,12 @@ int main()
 #endif
 
 	int result = comparing();
-	printf("benchmark finished\n");
 
-         bench_done(&res);
+	bench_done(&res);
 	
-         printf("Total cycle: %d\n", res.msec);
+        printf("Total cycle: %d\n", res.msec);
+
+	printf("benchmark finished\n");
 
 	if (result == 0)
 	{
