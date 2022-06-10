@@ -15,10 +15,7 @@ module WB_stage (
 	
 //by-path forwarding data : to ID
 	output [`WB_FW_BUS_WD-1 : 0]	WB_fw_bus,
-	
-//inst full/retire
-	//input 	inst_retired_fifo_full,
-	//output 	inst_retire_valid,
+
 	output [69:0] inst_retire,
 	
 //perf cnt
@@ -41,38 +38,8 @@ module WB_stage (
 	wire [4:0]	RF_waddr;
 	wire [31:0]	RF_wdata;
 	
-	wire 		inst_retire_wen;
-	wire 		inst_retired_fifo_full;
-	assign 		inst_retired_fifo_full = 1'b0;
-//state machine
-	always @(posedge clk) begin
-		if(rst)
-			WB_cur_state <= `RST;
-		else
-			WB_cur_state <= WB_next_state;
-	end
-	
-	always @(posedge clk) begin
-		case(WB_cur_state)
-			`RST: begin
-				WB_next_state = `WBG;
-			end
-			
-			`WBG: begin
-				if(inst_retired_fifo_full)
-					WB_next_state = `WBW;
-				else 
-					WB_next_state = `WBG;
-			end
-			
-			`WBW: begin
-				if(~inst_retired_fifo_full)
-					WB_next_state = `WBG;
-				else
-					WB_next_state = `WBW;
-			end
-		endcase
-	end
+        wire            inst_retire_valid;      //the inst retire is valid
+	wire 		inst_retire_wen;        //the inst retire is valid and need to WB
 	
 //control Unit
 	always @(posedge clk) begin
@@ -93,7 +60,7 @@ module WB_stage (
 		end
 	end
 	
-	assign WB_done = WB_cur_state == `WBG & ~inst_retired_fifo_full;
+	assign WB_done = 1'b1;  //always done in one clk
 	assign WB_ready = ~WB_work | WB_done;
 
 //Analyse MEM bus
@@ -108,8 +75,10 @@ module WB_stage (
 	
 //inst retire
 	//hold inst_retire_valid to one cycle to count valid inst
-	assign inst_retire_valid = WB_done & WB_work;
-	assign inst_retire = {WB_RF_wen & inst_retire_valid , RF_waddr , RF_wdata,WB_PC};
+        //hold inst_retire_wen to one cycle to avoid repeated comparison
+	assign inst_retire_valid = WB_done & WB_work ;
+        assign inst_retire_wen = inst_retire_valid & WB_RF_wen ;
+	assign inst_retire = {inst_retire_wen , RF_waddr , RF_wdata,WB_PC};
 
 //performance cnt
 	always @(posedge clk) begin

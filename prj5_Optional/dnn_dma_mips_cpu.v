@@ -45,7 +45,7 @@ input         intr,
 	output [31:0] cpu_perf_cnt_13,
 	output [31:0] cpu_perf_cnt_14,
 	output [31:0] cpu_perf_cnt_15,
-
+	
 	output [69:0] inst_retire
 );
 
@@ -85,7 +85,7 @@ input         intr,
 	reg [31:0]	Read_data_tmp;
 	reg [31:0]	PC_tmp;
 	//PC refresh in ID, set a reg to store origin PC
-
+	
 //Signals for DMA
 	reg intr_mask;	//make intr no work
 	reg [31:0] EPC;	
@@ -112,6 +112,15 @@ input         intr,
 	wire [31:0] br_extension;	//use in PC refresh
 	wire [31:0] j_extension; 	//use in PC refresh
 	
+//Signals connected to MUL
+	wire inst_MUL;
+	wire MUL_run;
+	wire MUL_done;
+	reg [31:0] MUL_A_tmp;
+	reg [31:0] MUL_B_tmp;
+	wire [63:0] MUL_Result;
+        reg [63:0] MUL_Result_tmp;
+
 //Signals connected to ALU
         wire [31:0] ALU_A_origin;
         wire [31:0] ALU_B_origin;
@@ -185,7 +194,7 @@ input         intr,
 
 //define signal for State Machine
 	//set 1 to Inst_Ready and Read_data_Ready to prevent Error
-	assign Inst_Req_Valid	= current_state[1] & ~(~intr_mask & intr) ;	//IF
+	assign Inst_Req_Valid	= current_state[1] & ~((~intr_mask & intr)) ;	//IF
 	assign Inst_Ready	= current_state[0] | current_state[2] ;//RST IW
 	assign Read_data_Ready  = current_state[0] | current_state[7] ;//RST RDW
 	
@@ -240,14 +249,19 @@ input         intr,
 				//R_Type	18: opcode[5:0]=6'b0 include JALR,JR //JR: rs->GPR[0] 
 				//I_calc	7: opcode[5:3]=001 include LUI
 				//JAL		1: opcode[5:0]=000011
+                                //MUL 		inst_MUL & MUL_done
 			//EX->LD
 				//load 		7: opcode[5:3]=100
 			//EX->ST
 				//store 	5: opcode[5:3]=101
 			EX: begin
-				if((opcode[5:0]==6'b000001) | (opcode[5:2]==4'b0001) | (opcode[5:0]==6'b000010) | inst_ERET )
+				if((opcode[5:0]==6'b000001) | (opcode[5:2]==4'b0001) | (opcode[5:0]==6'b000010))
+					next_state = IF;
+				else if(inst_ERET)
 					next_state = IF;
 				else if((~|opcode)| (opcode[5:3]==3'b001) | (opcode[5:0]==6'b000011))
+					next_state = WB;
+                                else if(inst_MUL & MUL_done)
 					next_state = WB;
 				else if(opcode[5:3]==3'b100)
 					next_state = LD;
@@ -366,6 +380,40 @@ input         intr,
 	assign br_extension   = {{14{imm[15]}},imm,2'b0}; //use in Branch
 	assign j_extension    = {PC[31:28],index,2'b0};	  //use in Jump CHECK PC4 OR PC!!!
 	
+//Signals connected to MUL
+        assign inst_MUL = opcode==6'b011100 & func == 6'b000010;
+        assign MUL_run = current_state == EX & inst_MUL;
+        always@(posedge clk) begin
+                if(rst)
+                        MUL_A_tmp <= 32'b0;
+                else if(current_state[3])
+                        MUL_A_tmp <= RF_rdata1;
+        end
+
+        always@(posedge clk) begin
+                if(rst)
+                        MUL_B_tmp <= 32'b0;
+                else if(current_state[3])
+                        MUL_B_tmp <= RF_rdata2;
+        end
+
+        mul mul_inst(
+		.clk		(clk),
+		.rst		(rst),
+		.a		(MUL_A_tmp),
+		.b		(MUL_B_tmp),
+		.run		(MUL_run),
+		.result		(MUL_Result),
+		.done		(MUL_done)
+	);
+
+        always@(posedge clk) begin
+                if(rst)
+                        MUL_Result_tmp <= 64'b0;
+                else if(current_state[4] & MUL_done) //EX
+                        MUL_Result_tmp <= MUL_Result;
+        end
+
 //signals connected to ALU
 	//All type below can differ from others
 	//Operation related to ALU list as : Type 	op_A 	op_B  	num   feature
@@ -524,7 +572,8 @@ input         intr,
 		//J 		1	opcode[5:0]=000010
 		//JR 		1 	opcode[5:0]=000000 & func[5:0]=001000
 	assign RF_wen = (current_state [8]) & //WB
-			((opcode[5:0]==6'b000000 & func[5]==1'b1) 	 	| 
+			( inst_MUL |
+                        (opcode[5:0]==6'b000000 & func[5]==1'b1) 	 	| 
 			(opcode[5:3]==3'b001 & (~&opcode[2:0]))  	 	|
 			(opcode[5:3]==3'b100)				 	|
 			(opcode[5:0]==6'b000000 & func[5:3]==3'b000)		|
@@ -532,10 +581,12 @@ input         intr,
 			(opcode[5:0]==6'b000000 & func[5:0]==6'b001001)		|
 			(opcode[5:0]==6'b001111)				|
 			((opcode[5:0]==6'b000000 & func[5:1]==5'b00101) & ((func[0] & (|RF_rdata2))|(~func[0] & (~|RF_rdata2))))) ;	
-	assign RF_waddr = (opcode[5:3]==3'b100 | opcode[5:3]==3'b001 ) 	? rt 	:
+	assign RF_waddr = inst_MUL                                      ? rd    :
+                          (opcode[5:3]==3'b100 | opcode[5:3]==3'b001 ) 	? rt 	:
 			  (opcode[5:0]==6'b000011) 		  	? 5'd31 :
 			  rd ;
-	assign RF_wdata =  {32{(opcode[5:0]==6'b000000 & func[5:1]==5'b00101) & ((func[0] & (|RF_rdata2))|(~func[0] & (~|RF_rdata2)))}}  & RF_rdata1		|
+	assign RF_wdata =  {32{inst_MUL}} & MUL_Result_tmp[31:0]   |
+                           {32{(opcode[5:0]==6'b000000 & func[5:1]==5'b00101) & ((func[0] & (|RF_rdata2))|(~func[0] & (~|RF_rdata2)))}}  & RF_rdata1		|
 			   {32{opcode[5:3]==3'b100}}											 & load_data		| //define below
 			   {32{opcode[5:0]==6'b000000 & func[5:3]==3'b000}} 							  	 & Shifter_Result_tmp 	|
 			   {32{opcode[5:0]==6'b001111}}											 & {imm,16'b0} 		|

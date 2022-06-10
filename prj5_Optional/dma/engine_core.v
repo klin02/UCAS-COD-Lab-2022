@@ -89,6 +89,7 @@ module engine_core #(
 	wire [31:0]	burst_time;
 	wire [31:0]	burst_time_A;
 	wire [31:0]	burst_time_B;
+        wire [31:0]     last_burst_cnt;
 	reg [31:0] 	RD_burst_cnt;
 	reg [31:0]	WR_burst_cnt;
 
@@ -113,7 +114,7 @@ module engine_core #(
 			dma_size  <= 32'b0;
 			ctrl_stat <= 32'b0;
 		end
-		else if(EN & WR_cur_state[1] & RD_burst_cnt == burst_time & WR_burst_cnt == burst_time) //check whether state is necessary
+		else if(EN & WR_cur_state[1] & RD_burst_cnt == burst_time & WR_burst_cnt == burst_time) 
 		begin
 			tail_ptr 	<= tail_ptr +dma_size;
 			ctrl_stat[31]  	<= 1'b1; 
@@ -151,7 +152,7 @@ module engine_core #(
 			RD_req: begin
 				if(rd_req_ready&rd_req_valid)		//consider RD burst cnt != burst time
 					RD_next_state = RD_work;
-				else if(RD_burst_cnt == burst_time)
+				else if(RD_burst_cnt == burst_time)     //after last_burst
 					RD_next_state = RD_idle;
 				else
 					RD_next_state = RD_req;
@@ -208,7 +209,8 @@ module engine_core #(
 	assign burst_time_A[31:27] = 5'b0;
 	assign burst_time_B[0]    = |dma_size[4:0];
 	assign burst_time_B[31:1] = 31'b0;
-	assign burst_time = burst_time_A + burst_time_B;
+	assign burst_time = burst_time_A + burst_time_B; //传输次数，burst_cnt为0至burst_time-1，相等表示传输完毕
+        assign last_burst_cnt = burst_time -1 ;
 
 	always @(posedge clk) begin
 		if(rst)
@@ -216,7 +218,7 @@ module engine_core #(
 		else if(RD_cur_state[0] & WR_cur_state[0])
 			RD_burst_cnt <= 32'b0;
 		else begin
-			if(RD_cur_state[1] & rd_req_ready & rd_req_valid)	//the beginning of a burst
+			if(RD_cur_state[2] & rd_ready & rd_valid & rd_last)	//the end of a burst
 				RD_burst_cnt <= RD_burst_cnt +32'b1;
 			else
 				RD_burst_cnt <= RD_burst_cnt;
@@ -229,29 +231,31 @@ module engine_core #(
 		else if(RD_cur_state[0] & WR_cur_state[0])	//zero out after a transfer
 			WR_burst_cnt <= 32'b0;
 		else begin
-			if(WR_cur_state[1] & wr_req_ready & wr_req_valid)	//the beginning of a burst
+			if(WR_cur_state[2] & wr_ready & wr_valid & wr_last)	//the end of a burst
 				WR_burst_cnt <= WR_burst_cnt +32'b1;
 			else
 				WR_burst_cnt <= WR_burst_cnt;
 		end
 	end
 		
-//len of burst, transmission time of 4 byte data
+//len of burst, transmission time of 4 byte data. 
+//last_burst_len used only when dma_size[4:0] != 0, i.e. burst_time_B[0]
 	assign last_burst_len_A[2:0] = dma_size[4:2];
 	assign last_burst_len_A[4:3] = 2'b0;
 	assign last_burst_len_B[0]   = |dma_size[1:0];
 	assign last_burst_len_B[4:1] = 4'b0;
 	assign last_burst_len = last_burst_len_A + last_burst_len_B -1 ; //len is 0-7
 
-	assign rd_req_len = RD_burst_cnt == burst_time ? last_burst_len : 5'd7;
-	assign wr_req_len = WR_burst_cnt == burst_time ? last_burst_len : 5'd7;
+        //when req, burst_cnt is 0 - burst_time-1
+	assign rd_req_len = (burst_time_B[0] & RD_burst_cnt == last_burst_cnt) ? last_burst_len : 5'd7;
+	assign wr_req_len = (burst_time_B[0] & WR_burst_cnt == last_burst_cnt) ? last_burst_len : 5'd7;
 
 //addr of READ and WRITE
 	always @(posedge clk) begin
 		if(RD_cur_state[0] & WR_cur_state[0] & head_ptr != tail_ptr)
 			rd_req_addr <= src_base + tail_ptr;
 		else if(RD_cur_state[2] & rd_ready & rd_valid & rd_last) begin
-			if(RD_burst_cnt == burst_time)
+			if(RD_burst_cnt == last_burst_cnt)
 				rd_req_addr <= rd_req_addr + dma_size[4:0];
 			else
 				rd_req_addr <= rd_req_addr + 32'd32;
@@ -262,7 +266,7 @@ module engine_core #(
 		if(RD_cur_state[0] & WR_cur_state[0] & head_ptr != tail_ptr)
 			wr_req_addr <= dest_base + tail_ptr;
 		else if(WR_cur_state[2] & wr_ready & wr_valid & wr_last) begin
-			if(WR_burst_cnt == burst_time)
+			if(WR_burst_cnt == last_burst_cnt)
 				wr_req_addr <= wr_req_addr + dma_size[4:0];
 			else
 				wr_req_addr <= wr_req_addr + 32'd32;

@@ -19,10 +19,6 @@
 	`define RDW	5'b01000	//read data wait
 	`define SLD	5'b10000	//store or load done
 	
-//WB_stage state
-	`define WBG 	5'b00010 	//WB go
-	`define WBW	5'b00100	//WB wait
-	
 	
 //BUS width between module
 	`define PRDT_BUS_WD 	 33  	// 1 br + 32 tar

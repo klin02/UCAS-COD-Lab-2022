@@ -17,6 +17,9 @@ module MEM_stage(
 	input         Read_data_Valid,
 	output        Read_data_Ready,
 
+/* in cpu_to_mem_axi_2x1_arb.v, MemRead and Inst_req_valid, only one can work.*/
+    	//input	      Inst_Req_Valid,
+
 //from EX
 	input EX_to_MEM_valid,
 	input [`EX_TO_MEM_BUS_WD-1 : 0] EX_to_MEM_bus,
@@ -173,6 +176,7 @@ module MEM_stage(
 			Read_data_reg <= Read_data;
 	end
 	
+	//assign MemRead = load & MEM_cur_state == `SL & ~Inst_Req_Valid;
 	assign MemRead = load & MEM_cur_state == `SL;
 	assign MemWrite = store &  MEM_cur_state == `SL;
 	
@@ -227,7 +231,7 @@ module MEM_stage(
 	always @(posedge clk)begin
 		if(rst)
 			MEM_visit_cnt <= 32'b0;
-		else if(MEM_work & MEM_cur_state == `SL)
+		else if(MEM_work & MEM_cur_state == `BSL & (load | store))
 			MEM_visit_cnt <= MEM_visit_cnt +1;
 	end
 	

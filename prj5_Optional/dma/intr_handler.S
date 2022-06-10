@@ -33,9 +33,9 @@ intr_handler:
         la 	$k0, last_tail_ptr 	# k0 = addr of last_tail_ptr
 	la 	$k1, 0x60020000
 	lw 	$k1, 0x08($k1) 		# GPR[k1] = cur_tail_ptr
-	sw 	$k1, 0($k0) 		# store cur to last
-L1:        
+	sw 	$k1, 0($k0) 		# store cur to last  
  # Return from interrupt
+L1:  
 	eret
 
 	

@@ -198,9 +198,9 @@ module dcache_top (
 			TAG_RD: begin
 				if(bypath)
 					next_state = BY_REQ;
-				else if(~bypath & cpu_mem_rw & Hit)	//write hit
+				else if(cpu_mem_rw & Hit)  //write hit
 					next_state = CACHE_WR;
-				else if(~bypath & ~cpu_mem_rw & Hit) //read hit
+				else if(~cpu_mem_rw & Hit) //read hit
 					next_state = CACHE_RD;
 				else 
 					next_state = EVICT;
@@ -245,7 +245,7 @@ module dcache_top (
 				if(cpu_mem_rw) //write
 					next_state = CACHE_WR;
 				else 
-					next_state = RESP; 	//save a cycle than CACHE_RD
+					next_state = CACHE_RD; 	//save a cycle than CACHE_RD
 			end
 			
 			CACHE_WR: begin
@@ -276,14 +276,14 @@ module dcache_top (
 				if(from_mem_wr_data_ready & to_mem_wr_data_last)
 					next_state = WAIT;
 				else
-					next_state = TXD;
+					next_state = BY_TXD;
 			end
 			
 			BY_RECV: begin
 				if(from_mem_rd_rsp_valid & from_mem_rd_rsp_last)
 					next_state = RESP;
 				else
-					next_state = RECV;
+					next_state = BY_RECV;
 			end
 
 			default:
@@ -293,7 +293,7 @@ module dcache_top (
 	
 //Analyse mem addr, compare and judge path
 	always @(posedge clk) begin
-		if(cur_state == WAIT)
+		if(cur_state == WAIT & from_cpu_mem_req_valid)
 		begin
 			cpu_mem_rw    <= from_cpu_mem_req;
 			cpu_mem_addr  <= from_cpu_mem_req_addr;
@@ -336,7 +336,7 @@ module dcache_top (
 			PLRU[0] <= 3'b0; PLRU[1] <= 3'b0; PLRU[2] <= 3'b0; PLRU[3] <= 3'b0; 
 			PLRU[4] <= 3'b0; PLRU[5] <= 3'b0; PLRU[6] <= 3'b0; PLRU[7] <= 3'b0; 
 		end
-		else if (cur_state == RESP | cur_state == CACHE_WR) begin //after read or write visit
+		else if (cur_state == CACHE_RD | cur_state == CACHE_WR) begin //after read or write visit
 			PLRU[set][0] <= choose01;
 			if(choose01) 
 				PLRU[set][1] <= choose0;
@@ -419,29 +419,29 @@ module dcache_top (
 	end
 	//dirty array
 	always @(posedge clk) begin
-        if (rst) begin
-            dirty0[0] <= 0; dirty1[0] <= 0; dirty2[0] <= 0; dirty3[0] <= 0;
-            dirty0[1] <= 0; dirty1[1] <= 0; dirty2[1] <= 0; dirty3[1] <= 0;
-            dirty0[2] <= 0; dirty1[2] <= 0; dirty2[2] <= 0; dirty3[2] <= 0;
-            dirty0[3] <= 0; dirty1[3] <= 0; dirty2[3] <= 0; dirty3[3] <= 0;
-            dirty0[4] <= 0; dirty1[4] <= 0; dirty2[4] <= 0; dirty3[4] <= 0;
-            dirty0[5] <= 0; dirty1[5] <= 0; dirty2[5] <= 0; dirty3[5] <= 0;
-            dirty0[6] <= 0; dirty1[6] <= 0; dirty2[6] <= 0; dirty3[6] <= 0;
-            dirty0[7] <= 0; dirty1[7] <= 0; dirty2[7] <= 0; dirty3[7] <= 0;
-        end
-        else if (cur_state == CACHE_WR) begin
-            	if (choose0) 		dirty0[set] <= 1'b1;
-            	else if (choose1) 	dirty1[set] <= 1'b1;
-            	else if (choose2) 	dirty2[set] <= 1'b1;
-            	else if (choose3) 	dirty3[set] <= 1'b1;
-	end
-	else if (cur_state == REFILL) begin //refill cache with mem data, reset dirty
-		if (choose0) 	  	dirty0[set] <= 1'b0;
-            	else if (choose1) 	dirty1[set] <= 1'b0;
-            	else if (choose2) 	dirty2[set] <= 1'b0;
-            	else if (choose3) 	dirty3[set] <= 1'b0;
-        end
-    end
+		if (rst) begin
+		dirty0[0] <= 0; dirty1[0] <= 0; dirty2[0] <= 0; dirty3[0] <= 0;
+		dirty0[1] <= 0; dirty1[1] <= 0; dirty2[1] <= 0; dirty3[1] <= 0;
+		dirty0[2] <= 0; dirty1[2] <= 0; dirty2[2] <= 0; dirty3[2] <= 0;
+		dirty0[3] <= 0; dirty1[3] <= 0; dirty2[3] <= 0; dirty3[3] <= 0;
+		dirty0[4] <= 0; dirty1[4] <= 0; dirty2[4] <= 0; dirty3[4] <= 0;
+		dirty0[5] <= 0; dirty1[5] <= 0; dirty2[5] <= 0; dirty3[5] <= 0;
+		dirty0[6] <= 0; dirty1[6] <= 0; dirty2[6] <= 0; dirty3[6] <= 0;
+		dirty0[7] <= 0; dirty1[7] <= 0; dirty2[7] <= 0; dirty3[7] <= 0;
+		end
+		else if (cur_state == CACHE_WR) begin
+			if (choose0) 		dirty0[set] <= 1'b1;
+			else if (choose1) 	dirty1[set] <= 1'b1;
+			else if (choose2) 	dirty2[set] <= 1'b1;
+			else if (choose3) 	dirty3[set] <= 1'b1;
+		end
+		else if (cur_state == REFILL) begin //refill cache with mem data, reset dirty
+			if (choose0) 	  	dirty0[set] <= 1'b0;
+			else if (choose1) 	dirty1[set] <= 1'b0;
+			else if (choose2) 	dirty2[set] <= 1'b0;
+			else if (choose3) 	dirty3[set] <= 1'b0;
+		end
+    	end
    
 //READ : final data to cpu  -- source : cache(hit)/mem(miss)/bypath
 	//data from cache
@@ -455,7 +455,7 @@ module dcache_top (
 	assign to_mem_rd_req_addr[31:5] = cpu_mem_addr[31:5];
 	assign to_mem_rd_req_addr[4:0]	= bypath ? cpu_mem_addr[4:0] : 5'b0;
 	
-	assign to_mem_rd_req_len = {4'b0 , {3{~bypath}} }; //bypath 0 other 7
+	assign to_mem_rd_req_len = {5'b0 , {3{~bypath}} }; //bypath 0 other 7
 
 	always @(posedge clk) begin
 		if((cur_state == RECV | cur_state == BY_RECV) & from_mem_rd_rsp_valid)
@@ -466,9 +466,8 @@ module dcache_top (
 	assign bypath_read_data = mem_block_data [255:224];
 	
 	//choose source
-	assign to_cpu_cache_rsp_data = 	( {32{ bypath}} & bypath_read_data)  		|
-					( {32{~bypath &  Hit_tmp}} & cache_final_data) 	|
-					( {32{~bypath & ~Hit_tmp}} & mem_final_data)   	;
+	assign to_cpu_cache_rsp_data = 	( {32{ bypath}} & bypath_read_data)  	|
+					( {32{~bypath}} & cache_final_data) 	;
 	
 //WRITE : final data from cpu --target : cache(hit or miss) / mem(bypath)
 		//note write back to MEM is dirty block or bypath
@@ -489,7 +488,7 @@ module dcache_top (
 				    ( {32{~bypath & choose1}} & {tag1[set],set,5'b0} )	|
 				    ( {32{~bypath & choose2}} & {tag2[set],set,5'b0} )	|
 				    ( {32{~bypath & choose3}} & {tag3[set],set,5'b0} )	;
-	assign to_mem_wr_req_len = {4'b0,{3{~bypath}}};
+	assign to_mem_wr_req_len = {5'b0,{3{~bypath}}};
 	
 	//use last shifter to get last signal
 	always @(posedge clk) begin
@@ -514,7 +513,7 @@ module dcache_top (
 		end
 	end
 	
-	assign to_mem_wr_data_last = last_shifter[0];
+	assign to_mem_wr_data_last = last_shifter[0] & from_mem_wr_data_ready & to_mem_wr_data_valid;
 	assign to_mem_wr_data = ( {32{ bypath}} & bypath_write_data) 	  |
 				( {32{~bypath}} & dirty_block_data[31:0]) ;
 	//for dirty block, strb are always 4'b1111 to ensure complete data transmit
@@ -525,10 +524,10 @@ module dcache_top (
 	assign to_cpu_mem_req_ready   = cur_state == WAIT;
 	assign to_cpu_cache_rsp_valid = cur_state == RESP;
 	
-	assign to_mem_rd_req_valid  = (cur_state == MEM_RD) | (cur_state == BY_REQ);
-	assign to_mem_rd_rsp_ready  = (cur_state == RECV) | (cur_state == BY_RECV);
+	assign to_mem_rd_req_valid  = (cur_state == MEM_RD) | (cur_state == BY_REQ & ~cpu_mem_rw);
+	assign to_mem_rd_rsp_ready  = (cur_state == RECV) | (cur_state == BY_RECV) | (cur_state == WAIT);
 	
-	assign to_mem_wr_req_valid  = (cur_state == MEM_WR) | (cur_state == BY_REQ);
+	assign to_mem_wr_req_valid  = (cur_state == MEM_WR) | (cur_state == BY_REQ & cpu_mem_rw);
 	assign to_mem_wr_data_valid = (cur_state == TXD) | (cur_state == BY_TXD);
 endmodule
 

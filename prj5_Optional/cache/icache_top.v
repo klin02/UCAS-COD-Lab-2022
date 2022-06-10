@@ -303,6 +303,6 @@ module icache_top (
 	assign to_cpu_inst_req_ready 	= cur_state[0]; //WAIT
 	assign to_cpu_cache_rsp_valid 	= cur_state[7]; //RESP
 	assign to_mem_rd_req_valid 	= cur_state[3]; //MEM_RD
-	assign to_mem_rd_rsp_ready 	= cur_state[4]; //RECV
+	assign to_mem_rd_rsp_ready 	= cur_state[4] | (cur_state == WAIT); //RECV
 endmodule
 

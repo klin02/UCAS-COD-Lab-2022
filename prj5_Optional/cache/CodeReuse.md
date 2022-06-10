@@ -10,4 +10,4 @@ rv32：custom_CPU turbo(pipeline)
 复用prj3中bench.c perf_cnt.h perf_cnt.c printf.c
 
 #### framework
-data_array.v tag_array.v为框架代码 不做改动  
+data_array.v tag_array.v为框架代码,不做改动 cache实际实现中直接在代码中定义了对应array  

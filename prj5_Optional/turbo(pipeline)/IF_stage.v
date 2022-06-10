@@ -12,6 +12,9 @@ module IF_stage(
 
     input [31:0] Instruction,
 
+/* in cpu_to_mem_axi_2x1_arb.v, MemRead and Inst_req_valid, only one can work.*/
+    input MemRead,
+
 //overall
 	//Signals show prediction fail
     input cancel,
@@ -67,7 +70,8 @@ module IF_stage(
 		end
 	end
 //Inst request and response channel
-	assign Inst_Req_Valid = IF_cur_state == `IF & ~cancel; 
+	assign Inst_Req_Valid = IF_cur_state == `IF & ~cancel & ~MemRead; 
+	//assign Inst_Req_Valid = IF_cur_state == `IF & ~cancel; 
 	assign Inst_Ready = IF_cur_state == `IW | IF_cur_state == `RST;
 
 //State Machine: IF_pipeline
