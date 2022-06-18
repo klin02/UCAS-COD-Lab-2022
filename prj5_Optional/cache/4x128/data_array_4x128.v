@@ -1,8 +1,9 @@
 `timescale 10 ns / 1 ns
 
 `define DARRAY_DATA_WIDTH 256
-`define DARRAY_ADDR_WIDTH 3
-
+`define DARRAY_ADDR_WIDTH 7
+`define DAARAY_SET 128
+//修改set时需修改，DARRAT_SET DARRT_ADDR_WIDTH
 module data_array(
 	input                             clk,
 	input  [`DARRAY_ADDR_WIDTH - 1:0] waddr,
@@ -12,7 +13,7 @@ module data_array(
 	output [`DARRAY_DATA_WIDTH - 1:0] rdata
 );
 
-	reg [`DARRAY_DATA_WIDTH-1:0] array[ 1 << `DARRAY_ADDR_WIDTH - 1 : 0];
+	reg [`DARRAY_DATA_WIDTH-1:0] array[ `DAARAY_SET - 1 : 0];
 	
 	always @(posedge clk)
 	begin

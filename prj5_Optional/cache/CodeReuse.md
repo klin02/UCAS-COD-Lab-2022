@@ -13,4 +13,8 @@ rv32：custom_CPU turbo(pipeline)
 
 #### framework
 backup文件夹中data_array.v tag_array.v为框架代码,不做改动，在cache内部实现相应功能   
-为方便进行cache容量，在其余以数字命名的文件夹中，均例化了darray和tarray   
+为方便进行cache容量，在其余以数字命名的文件夹中，均例化了darray和tarray  
+
+#### performance  
+8路组情况下只支持每路组16个cache块，4路组情形可支持每路组128个cache块  
+无cache流水线在300hz下bit-gen中WNS均大于0，加上4x128的i/dcache后在280hz可保证bit-gen中WNS均大于0
